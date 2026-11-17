@@ -374,11 +374,11 @@ trip_data read_trips(
 
         auto const gtfs_trp_idx = gtfs_trip_idx_t{ret.data_.size()};
 
-        ret.data_.push_back(trip{
-            route_id, service, blk, t.trip_id_->to_str(),
-            x.headsign_, trip_short_name, x.direction_, shape_idx, flags,
-            std::string{t.ticketing_trip_id->view()},
-            t.ticketing_type.val() == 1});
+        ret.data_.push_back(trip{route_id, service, blk, t.trip_id_->to_str(),
+                                 x.headsign_, trip_short_name, x.direction_,
+                                 shape_idx, flags,
+                                 std::string{t.ticketing_trip_id->view()},
+                                 t.ticketing_type.val() == 1});
         ret.data_.back().trip_idx_ = register_trip(tt, ctx, x);
         ret.data_.back().clasz_ = trip_clasz;
         ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);

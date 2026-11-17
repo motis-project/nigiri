@@ -36,8 +36,8 @@ bool is_active(timetable const& tt, transport_idx_t const t) {
 template <typename T>
 std::vector<std::pair<T, std::vector<T>>> by_target(
     metadata_enricher::pairs<T> const& pairs) {
-  auto sorted = std::vector<std::pair<std::pair<T, T>, unsigned>>{
-      begin(pairs), end(pairs)};
+  auto sorted = std::vector<std::pair<std::pair<T, T>, unsigned>>{begin(pairs),
+                                                                  end(pairs)};
   std::ranges::sort(sorted, [](auto const& a, auto const& b) {
     return std::tuple{a.first.first, b.second, a.first.second} <
            std::tuple{b.first.first, a.second, b.first.second};
@@ -89,7 +89,8 @@ struct line_name {
     auto const is_number = [](line_name const& x) {
       return x.numbers_.size() == 1U && x.numbers_.front() == x.name_;
     };
-    return (is_number(*this) && utl::find(o.numbers_, name_) != end(o.numbers_)) ||
+    return (is_number(*this) &&
+            utl::find(o.numbers_, name_) != end(o.numbers_)) ||
            (is_number(o) && utl::find(numbers_, o.name_) != end(numbers_));
   }
 
@@ -219,18 +220,17 @@ void metadata_enricher::apply() {
   for (auto const& [r, sources] : by_target(route_ids_)) {
     auto& ids = tt_.route_ids_[r.first];
     auto const fill_from = [&](auto const member, auto&& is_set) {
-      return fill(
-          (ids.*member)[r.second], sources,
-          [&](route_id const s) {
-            return (tt_.route_ids_[s.first].*member)[s.second];
-          },
-          is_set);
+      return fill((ids.*member)[r.second], sources,
+                  [&](route_id const s) {
+                    return (tt_.route_ids_[s.first].*member)[s.second];
+                  },
+                  is_set);
     };
     auto filled = fill_from(&timetable::route_ids::route_id_url_, has_text);
-    filled = fill_from(&timetable::route_ids::route_id_colors_, has_color) ||
-             filled;
-    filled = fill_from(&timetable::route_ids::route_id_wikidata_, has_id) ||
-             filled;
+    filled =
+        fill_from(&timetable::route_ids::route_id_colors_, has_color) || filled;
+    filled =
+        fill_from(&timetable::route_ids::route_id_wikidata_, has_id) || filled;
     n_routes += filled ? 1U : 0U;
   }
 
@@ -243,12 +243,12 @@ void metadata_enricher::apply() {
       };
     };
     auto filled = fill(x.url_, sources, get(&provider::url_), has_text);
-    filled =
-        fill(x.fare_url_, sources, get(&provider::fare_url_), has_text) ||
-        filled;
+    filled = fill(x.fare_url_, sources, get(&provider::fare_url_), has_text) ||
+             filled;
     filled =
         fill(x.wikidata_, sources, get(&provider::wikidata_), has_id) || filled;
-    filled = add_translations(x.name_, sources, get(&provider::name_)) || filled;
+    filled =
+        add_translations(x.name_, sources, get(&provider::name_)) || filled;
     n_agencies += filled ? 1U : 0U;
   }
 
@@ -357,8 +357,8 @@ void match_metadata_routes(
     bool number_only_;
     std::vector<std::pair<stop_idx_t, stop_idx_t>> stops_;
   };
-  auto matches = std::vector<std::vector<std::pair<route_idx_t, match>>>(
-      lines.size());
+  auto matches =
+      std::vector<std::vector<std::pair<route_idx_t, match>>>(lines.size());
   utl::parallel_for_run(lines.size(), [&](std::size_t const i) {
     auto const& l = lines[i];
     auto const m = tt.route_location_seq_[l.route_].size();
@@ -426,7 +426,8 @@ void match_metadata_routes(
         } else if (at(a, b) == at(a, b - 1U)) {
           --b;
         } else {
-          x.stops_.emplace_back(a - 1U, b - 1U);
+          x.stops_.emplace_back(static_cast<stop_idx_t>(a - 1U),
+                                static_cast<stop_idx_t>(b - 1U));
           --a;
           --b;
         }
@@ -473,8 +474,8 @@ void match_metadata_routes(
 
   log(log_lvl::info, "loader.match_metadata_routes",
       "{} of {} metadata lines matched {} routes",
-      utl::count_if(matches, [](auto&& x) { return !x.empty(); }),
-      lines.size(), n_matched_routes);
+      utl::count_if(matches, [](auto&& x) { return !x.empty(); }), lines.size(),
+      n_matched_routes);
 }
 
 }  // namespace nigiri::loader

@@ -725,10 +725,9 @@ attribute_idx_t register_attribute(timetable& tt, attribute const& a) {
 
 provider_idx_t register_agency(timetable& tt, agency const& a) {
   auto const idx = tt.providers_.size();
-  tt.providers_.emplace_back(provider{tt.strings_.store(a.id_), a.name_, a.url_,
-                                      a.fare_url_, a.timezone_idx_,
-                                      ticketing_link_idx_t::invalid(), a.src_,
-                                      a.wikidata_});
+  tt.providers_.emplace_back(provider{
+      tt.strings_.store(a.id_), a.name_, a.url_, a.fare_url_, a.timezone_idx_,
+      ticketing_link_idx_t::invalid(), a.src_, a.wikidata_});
   tt.provider_id_to_idx_.emplace_back(idx);
   return provider_idx_t{idx};
 }

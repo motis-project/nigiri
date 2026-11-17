@@ -55,7 +55,8 @@ void remove_routes_without_transports(timetable& tt,
     flags.resize(static_cast<bitvec::size_type>(kept.size() * 2U));
     for (auto i = 0U; i != kept.size(); ++i) {
       flags.set(i * 2U, tt.route_flags_[f].test(to_idx(kept[i]) * 2U));
-      flags.set(i * 2U + 1U, tt.route_flags_[f].test(to_idx(kept[i]) * 2U + 1U));
+      flags.set(i * 2U + 1U,
+                tt.route_flags_[f].test(to_idx(kept[i]) * 2U + 1U));
     }
     tt.route_flags_[f] = std::move(flags);
     keep_buckets(tt.route_flags_per_section_[f]);

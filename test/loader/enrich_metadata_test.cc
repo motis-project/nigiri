@@ -119,14 +119,14 @@ VT1,10:04:00,10:04:00,X3,3
 VT1,10:06:00,10:06:00,X4,4
 )";
 
-constexpr auto const kDateRange =
-    interval{date::sys_days{2024_y / March / 1}, date::sys_days{2024_y / March / 8}};
+constexpr auto const kDateRange = interval{date::sys_days{2024_y / March / 1},
+                                           date::sys_days{2024_y / March / 8}};
 
 route_id_idx_t route_id(timetable const& tt,
                         source_idx_t const src,
                         std::string_view const id) {
   auto const& ids = tt.route_ids_[src];
-  for (auto r = route_id_idx_t{0U}; r != ids.ids_.size(); ++r) {
+  for (auto r = route_id_idx_t{0U}; r != route_id_idx_t{ids.ids_.size()}; ++r) {
     if (ids.ids_.get(r) == id) {
       return r;
     }
@@ -168,8 +168,8 @@ TEST(wikidata, parse) {
   EXPECT_EQ(wikibase_idx_t{1U}, other.wikibase_);
   EXPECT_EQ("https://wikibase.example.org/wiki/Item:Q7",
             wikidata_url(tt, other));
-  EXPECT_EQ(other, parse_wikidata_id(
-                       tt, "https://wikibase.example.org/wiki/Item:Q7"));
+  EXPECT_EQ(other,
+            parse_wikidata_id(tt, "https://wikibase.example.org/wiki/Item:Q7"));
   EXPECT_EQ(2U, tt.wikibase_urls_.size());
 }
 
@@ -178,9 +178,7 @@ TEST(loader, enrich_from_metadata_feed) {
   auto const meta = mem_dir::read(kMetadataFeed);
 
   auto const plain = load(std::vector<dir_source>{{real}}, kDateRange);
-  auto const tt =
-      load(std::vector<dir_source>{{real}, {meta}},
-           kDateRange);
+  auto const tt = load(std::vector<dir_source>{{real}, {meta}}, kDateRange);
 
   auto const n_active = [](timetable const& x) {
     auto n = 0U;
@@ -231,9 +229,7 @@ TEST(loader, metadata_feed_requires_line_name_match) {
   meta_str.replace(meta_str.find(",M4,"), 4U, ",M5,");
   auto const meta = mem_dir::read(meta_str);
 
-  auto const tt =
-      load(std::vector<dir_source>{{real}, {meta}},
-           kDateRange);
+  auto const tt = load(std::vector<dir_source>{{real}, {meta}}, kDateRange);
   auto const r = route_id(tt, source_idx_t{0U}, "R1");
   EXPECT_FALSE(tt.route_ids_[source_idx_t{0U}].route_id_wikidata_[r].valid());
   EXPECT_EQ(color_t{0U},
@@ -243,10 +239,10 @@ TEST(loader, metadata_feed_requires_line_name_match) {
 TEST(loader, metadata_feed_lines_with_same_stops) {
   // M5 is listed first and has the same stop sequence as M4.
   auto meta_str = std::string{kMetadataFeed};
-  meta_str.replace(
-      meta_str.find("osm:r1,Q99633,M 4"), 0U,
-      "osm:r5,Q99633,M5,,0,,00FF00,Q5\n");
-  meta_str.replace(meta_str.find("osm:r1,,osm:r10"), 0U, "osm:r5,,osm:r50,,M5,\n");
+  meta_str.replace(meta_str.find("osm:r1,Q99633,M 4"), 0U,
+                   "osm:r5,Q99633,M5,,0,,00FF00,Q5\n");
+  meta_str.replace(meta_str.find("osm:r1,,osm:r10"), 0U,
+                   "osm:r5,,osm:r50,,M5,\n");
   auto i = 0U;
   for (auto const s : {"a", "b", "x", "c", "d"}) {
     meta_str.replace(meta_str.find("\n# translations.txt"), 0U,
@@ -255,9 +251,7 @@ TEST(loader, metadata_feed_lines_with_same_stops) {
   auto const real = mem_dir::read(kRealFeed);
   auto const meta = mem_dir::read(meta_str);
 
-  auto const tt =
-      load(std::vector<dir_source>{{real}, {meta}},
-           kDateRange);
+  auto const tt = load(std::vector<dir_source>{{real}, {meta}}, kDateRange);
   auto const src = source_idx_t{0U};
   auto const r = route_id(tt, src, "R1");
   EXPECT_EQ("https://www.wikidata.org/wiki/Q62512299",
@@ -274,9 +268,9 @@ TEST(loader, enrich_from_duplicates) {
   auto const real = mem_dir::read(real_str);
   auto const dup = mem_dir::read(kDuplicateFeed);
 
-  auto const tt = load(std::vector<dir_source>{{real}, {dup}}, kDateRange,
-                       {.merge_dupes_intra_src_ = false,
-                        .merge_dupes_inter_src_ = true});
+  auto const tt =
+      load(std::vector<dir_source>{{real}, {dup}}, kDateRange,
+           {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = true});
 
   auto active = transport_idx_t::invalid();
   auto n_active = 0U;
@@ -288,7 +282,8 @@ TEST(loader, enrich_from_duplicates) {
   }
   ASSERT_EQ(1U, n_active);
 
-  auto const trip = tt.merged_trips_[tt.transport_to_trip_section_[active][0]][0];
+  auto const trip =
+      tt.merged_trips_[tt.transport_to_trip_section_[active][0]][0];
   auto const src = tt.trip_id_src_[trip];
   auto const r = tt.trip_route_id_[trip];
   auto const& ids = tt.route_ids_[src];
@@ -297,11 +292,13 @@ TEST(loader, enrich_from_duplicates) {
             tt.get_default_translation(ids.route_id_url_[r]));
   EXPECT_EQ("https://www.wikidata.org/wiki/Q62512299",
             wikidata_url(tt, ids.route_id_wikidata_[r]));
-  EXPECT_EQ("https://www.wikidata.org/wiki/Q99633",
-            wikidata_url(tt, tt.providers_[ids.route_id_provider_[r]].wikidata_));
+  EXPECT_EQ(
+      "https://www.wikidata.org/wiki/Q99633",
+      wikidata_url(tt, tt.providers_[ids.route_id_provider_[r]].wikidata_));
 
   auto const first_stop =
-      stop{tt.route_location_seq_[tt.transport_route_[active]][0]}.location_idx();
+      stop{tt.route_location_seq_[tt.transport_route_[active]][0]}
+          .location_idx();
   EXPECT_EQ("https://www.wikidata.org/wiki/Q111",
             wikidata_url(tt, tt.locations_.wikidata_[first_stop]));
   EXPECT_TRUE(
@@ -313,22 +310,22 @@ TEST(loader, enrich_from_duplicates) {
 TEST(loader, rt_update_for_fully_absorbed_trip) {
   auto const real = mem_dir::read(kRealFeed);
   auto const dup = mem_dir::read(kDuplicateFeed);
-  auto const tt = load(std::vector<dir_source>{{real}, {dup}}, kDateRange,
-                       {.merge_dupes_intra_src_ = false,
-                        .merge_dupes_inter_src_ = true});
+  auto const tt =
+      load(std::vector<dir_source>{{real}, {dup}}, kDateRange,
+           {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = true});
   ASSERT_EQ(1U, tt.n_routes());
   ASSERT_EQ(1U, to_idx(tt.next_transport_idx()));
 
   auto const day = date::sys_days{2024_y / March / 4};
-  for (auto const& [src, trip_id] :
-       {std::pair{source_idx_t{0U}, "T1"}, std::pair{source_idx_t{1U}, "VT1"}}) {
+  for (auto const& [src, trip_id] : {std::pair{source_idx_t{0U}, "T1"},
+                                     std::pair{source_idx_t{1U}, "VT1"}}) {
     auto rtt = rt::create_rt_timetable(tt, day);
-    auto const msg = test::to_feed_msg(
-        {test::trip{.trip_id_ = trip_id,
-                    .delays_ = {{.seq_ = 3,
-                                 .ev_type_ = event_type::kArr,
-                                 .delay_minutes_ = 5}}}},
-        day + 9h);
+    auto const msg =
+        test::to_feed_msg({test::trip{.trip_id_ = trip_id,
+                                      .delays_ = {{.seq_ = 3,
+                                                   .ev_type_ = event_type::kArr,
+                                                   .delay_minutes_ = 5}}}},
+                          day + 9h);
     auto const stats = rt::gtfsrt_update_msg(tt, rtt, src, "tag", msg);
     EXPECT_EQ(1, stats.total_entities_success_) << trip_id;
 
