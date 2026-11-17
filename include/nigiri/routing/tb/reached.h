@@ -41,11 +41,7 @@ struct entry {
 
 struct reached {
   explicit reached(timetable const& tt, tb_data const& tbd)
-      : tt_{tt}, tbd_{tbd}, data_{tt.n_routes()} {
-    for (auto& x : data_) {
-      x.els_.reserve(8);
-    }
-  }
+      : tt_{tt}, tbd_{tbd}, data_{tt.n_routes()} {}
 
   void reset() {
     for (auto r = route_idx_t{0U}; r != tt_.n_routes(); ++r) {
@@ -67,6 +63,10 @@ struct reached {
         tt_.transport_name(tt_.route_transport_ranges_[r][transport_offset]),
         query_day_offset, segment_offset);
     auto const transport = to_transport(transport_offset, query_day_offset);
+    // Allocate only for the routes that are reached by a query
+    if (data_[r].els_.capacity() == 0U) {
+      data_[r].els_.reserve(8);
+    }
     data_[r].add(
         {.transport_ = transport, .segment_offset_ = segment_offset, .k_ = k});
 
