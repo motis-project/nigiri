@@ -20,16 +20,16 @@ struct base_flat_matrix_view {
     using const_iterator = iterator;
 
     const_iterator begin() const {
-      return std::next(matrix_.entries_, matrix_.n_columns_ * i_);
+      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * i_);
     }
     const_iterator end() const {
-      return std::next(matrix_.entries_, matrix_.n_columns_ * (i_ + 1));
+      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * (i_ + 1));
     }
     iterator begin() {
-      return std::next(matrix_.entries_, matrix_.n_columns_ * i_);
+      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * i_);
     }
     iterator end() {
-      return std::next(matrix_.entries_, matrix_.n_columns_ * (i_ + 1));
+      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * (i_ + 1));
     }
     friend const_iterator begin(row const& r) { return r.begin(); }
     friend const_iterator end(row const& r) { return r.end(); }
@@ -54,10 +54,10 @@ struct base_flat_matrix_view {
     using iterator = typename Span::iterator;
 
     iterator begin() const {
-      return std::next(matrix_.entries_, matrix_.n_columns_ * i_);
+      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * i_);
     }
     iterator end() const {
-      return std::next(matrix_.entries_, matrix_.n_columns_ * (i_ + 1));
+      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * (i_ + 1));
     }
     friend iterator begin(const_row const& r) { return r.begin(); }
     friend iterator end(const_row const& r) { return r.end(); }
