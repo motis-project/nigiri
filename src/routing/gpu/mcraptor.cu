@@ -602,15 +602,10 @@ template <direction SearchDir, typename Criteria>
 void gpu_mcraptor<SearchDir, Criteria>::next_start_time() {
   starts_.clear();
   auto& s = *state_.impl_;
-  auto const r = make_impl<SearchDir, Criteria>(
-      s, kDirIdx, transfer_time_settings_, allowed_claszes_, ctx_, 0U, base_,
-      worst_at_dest_, {});
-  if (reuse_same_dep_) {
-    launch(mc_clear_bags_kernel<SearchDir, Criteria>, s.stream_, r);
-    fill_bytes(s.bag_pool_count_, 0, s.stream_);
-  } else {
-    launch(mc_demote_bags_kernel<SearchDir, Criteria>, s.stream_, r);
-  }
+  launch(mc_demote_bags_kernel<SearchDir, Criteria>, s.stream_,
+         make_impl<SearchDir, Criteria>(s, kDirIdx, transfer_time_settings_,
+                                        allowed_claszes_, ctx_, 0U, base_,
+                                        worst_at_dest_, {}));
   fill_bytes(s.station_mark_, 0, s.stream_);
   fill_bytes(s.prev_station_mark_, 0, s.stream_);
   fill_bytes(s.route_mark_, 0, s.stream_);

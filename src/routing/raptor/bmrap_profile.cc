@@ -186,11 +186,6 @@ routing_result bmrap_profile(
   mc_pong.set_td_start(qf.td_start_);
   mc_pong.set_start_stops(qf.start_, qf.start_match_mode_);
 
-  if constexpr (GpuMc) {
-    // phase 5 runs several departures under one reset_arrivals(): the device
-    // reuse frontier must not carry over between them, as on the CPU
-    mc_pong.set_reuse_same_dep();
-  }
   sw.lap(ms_setup);
 
   auto prune_stats = raptor_stats{};
@@ -573,7 +568,6 @@ routing_result bmrap_profile(
       });
     };
 
-    mc_pong.reset_arrivals();
     auto step_results = pareto_set<journey>{};
     auto skipped_deps = std::vector<unixtime_t>{};
     for_each_arrival_group(mc_results, [&](unixtime_t const arr,
@@ -598,6 +592,8 @@ routing_result bmrap_profile(
       for (auto it = first; it != last; ++it) {
         targets.push_back(&*it);
       }
+      // one search per group: the bags outlive next_start_time()
+      mc_pong.reset_arrivals();
       seed_bwd(mc_pong, arr);
       guided(mc_pong, targets, [&]() {
         mc_pong.execute(arr, group_tr, all_rounds(start_time - kDir),

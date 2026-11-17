@@ -131,10 +131,6 @@ struct gpu_mcraptor {
 
   void reconstruct(query const&, journey&);
 
-  // next_start_time() clears the bags instead of demoting them (as the CPU
-  // engine without range reuse)
-  void set_reuse_same_dep() { reuse_same_dep_ = true; }
-
   // Guided searches (bmrap_profile.cc): take_guide() copies this search's
   // labels per stop into the state, one copy per direction; a later search of
   // the other direction with set_guide() keeps only the labels that join one
@@ -166,7 +162,6 @@ private:
   profile_idx_t prf_idx_;
 
   delta_t worst_at_dest_;  // search window only
-  bool reuse_same_dep_{false};
 
   mc_start start_;
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
