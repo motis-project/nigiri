@@ -627,6 +627,14 @@ __global__ void reach_bounds_kernel(device_times<SearchDir, 1U> round_times,
   for (auto l = get_global_thread_id(); l < n_locations;
        l += get_global_stride()) {
     auto const li = location_idx_t{l};
+    // as bmrap_detail::has_reach_bound()
+    if (l >= tt.n_locations_ ||
+        tt.transfer_time_[li].count() == kNoTransferAllowed.count()) {
+      for (auto i = 0U; i <= budget; ++i) {
+        out[i * n_locations + l] = kInvalidDelta<flip(SearchDir)>;
+      }
+      continue;
+    }
     auto const buf =
         sub_transfer ? (kFwd ? 1 : -1) * adjusted_transfer_time(
                                              tts, tt.transfer_time_[li].count())

@@ -40,8 +40,12 @@ struct join_oracle final : mc_oracle<Criteria> {
                 unsigned const k,
                 delta_t const t,
                 Criteria const& label) const override {
+    // a real-time location: its parent's transfer time, at most a ban
     auto const slack = adjusted_transfer_time(
-        *settings_, tt_->locations_.transfer_time_[location_idx_t{l}].count());
+        *settings_,
+        l < tt_->n_locations()
+            ? tt_->locations_.transfer_time_[location_idx_t{l}].count()
+            : kNoTransferAllowed.count());
     auto const at = static_cast<int>(t);
     for (auto const& e : labels_->at(l)) {
       auto const other_at = static_cast<int>(e.crit_.arr_);

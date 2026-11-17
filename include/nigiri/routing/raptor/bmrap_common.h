@@ -411,6 +411,13 @@ std::size_t close_anchor_profile(timetable const& tt,
                               tt, rtt, q, anchor_interval, state, anchors);
 }
 
+// Banned same-stop transfers leave no post-transfer time to bound walk-ins by,
+// real-time locations take their parent's transfer time: neither prunes.
+inline bool has_reach_bound(timetable const& tt, std::uint32_t const l) {
+  return l < tt.n_locations() &&
+         tt.locations_.transfer_time_[location_idx_t{l}] != kNoTransferAllowed;
+}
+
 // tau_arr^->(v, i) from a finished search's round times: row i is the prefix
 // over rounds <= i ("at most i trips"). `sub_transfer` takes the transfer
 // buffer off the post-transfer times once, so a forward and a backward matrix
@@ -441,6 +448,10 @@ bmrap_bounds reach_matrix(timetable const& tt,
     bounds.resize(n_locations, budget, kInvalid);
     for (auto i = 0U; i <= budget; ++i) {
       for (auto l = 0U; l != n_locations; ++l) {
+        if (!has_reach_bound(tt, l)) {
+          bounds.at(i, l) = kInvalidDelta<flip(PruneDir)>;
+          continue;
+        }
         auto const cur = round_times[i][l][kVias];
         auto const prev_out = (i == 0U) ? kInvalid : bounds.at(i - 1U, l);
         if (cur == kInvalid && prev_out == kInvalid) {
