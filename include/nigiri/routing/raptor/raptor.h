@@ -459,8 +459,6 @@ struct raptor {
     }
     trace("reconstruct({} - {}, {} transfers", j.departure_time(),
           j.arrival_time(), j.transfers_);
-    // The journey can be older than the last reset_arrivals() and have more
-    // rounds than the search since then reached.
     init_rounds_up_to(j.transfers_ + 1U);
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
   }
@@ -470,10 +468,6 @@ struct raptor {
   }
 
 private:
-  // Rounds are initialized on first use: most searches end long before
-  // kMaxTransfers. Rows that are not initialized yet hold stale values,
-  // possibly of the other search direction (ping and pong share the table), and
-  // must not be read.
   void init_rounds_up_to(unsigned const k) {
     for (; n_init_rounds_ <= k; ++n_init_rounds_) {
       utl::fill(round_times_[n_init_rounds_], kInvalidArray);
