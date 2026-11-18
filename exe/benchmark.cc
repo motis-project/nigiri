@@ -211,8 +211,7 @@ std::vector<std::string> leg_problems(timetable const& tt,
               }
               prev_ride_end = {l.to_, l.arr_time_};
               auto const c = tt.route_clasz_[tt.transport_route_[fr.t_.t_idx_]];
-              avoided |=
-                  is_allowed(routing::mode_filter_dim::avoided_mask(), c);
+              avoided |= is_allowed(q.avoided_claszes_, c);
               auto const g = routing::mode_group(c);
               switches = std::min(
                   switches +
@@ -258,11 +257,12 @@ std::vector<std::string> leg_problems(timetable const& tt,
   }
   if (mc) {
     if ((!rule_walk && j.criteria_cost_ != units * routing::kNonTransitBin) ||
-        j.criteria_mode_filter_ != avoided ||
+        j.criteria_avoided_modes_ != avoided ||
         j.criteria_mode_switches_ != switches) {
       fail("criteria {}/{}/{} recomputed from the legs {}/{}/{}",
-           j.criteria_cost_, j.criteria_mode_filter_, j.criteria_mode_switches_,
-           units * routing::kNonTransitBin, avoided, switches);
+           j.criteria_cost_, j.criteria_avoided_modes_,
+           j.criteria_mode_switches_, units * routing::kNonTransitBin, avoided,
+           switches);
     }
   }
   return problems;
@@ -289,7 +289,7 @@ template <direction SearchDir>
 routing::routing_result restricted_range_search(
     timetable const& tt,
     search_state& ss,
-    routing::mcraptor_non_transit_mode_filter_mode_switches_state& state,
+    routing::mcraptor_non_transit_avoided_modes_mode_switches_state& state,
     routing::query q) {
   auto r =
       routing::raptor_search(tt, nullptr, ss, state, std::move(q), SearchDir);
@@ -322,7 +322,7 @@ restricted_diff compare_restricted(result_set const& bm,
                       j.dest_time_,
                       j.transfers_,
                       j.criteria_cost_,
-                      j.criteria_mode_filter_,
+                      j.criteria_avoided_modes_,
                       j.criteria_mode_switches_};
   };
   auto d = restricted_diff{};
@@ -336,11 +336,13 @@ restricted_diff compare_restricted(result_set const& bm,
     auto const decidable = [&](journey const& j) {
       return window.contains(j.start_time_) &&
              j.travel_time() < kCheckedMaxTravelTime &&
-             utl::any_of(anchors, [&](routing::bmrap_detail::anchor const& y) {
-               return !is_better(y.anchored_, j.start_time_) &&
-                      y.trips_ <= j.transfers_ + 1U &&
-                      !is_better(edge, y.found_);
-             });
+             utl::any_of(
+                 anchors,
+                 [&](routing::bmrap_detail::anchor const& y) {
+                   return !is_better(y.anchored_, j.start_time_) &&
+                          y.trips_ <= j.transfers_ + 1U &&
+                          !is_better(edge, y.found_);
+                 });
     };
     auto const set = [&](pareto_set<journey> const& res) {
       auto v = std::vector<journey const*>{};
@@ -360,7 +362,7 @@ restricted_diff compare_restricted(result_set const& bm,
     auto const key = [](journey const& j) {
       return fmt::format("dep={} arr={} tr={} walk={} avoided={} switches={}",
                          j.departure_time(), j.arrival_time(), j.transfers_,
-                         j.criteria_cost_, j.criteria_mode_filter_,
+                         j.criteria_cost_, j.criteria_avoided_modes_,
                          j.criteria_mode_switches_);
     };
     d.compared_ += b.size();
@@ -1200,7 +1202,7 @@ int main(int argc, char* argv[]) {
                       std::is_same_v<
                           RS,
                           routing::
-                              mcraptor_non_transit_mode_filter_mode_switches_state>) {
+                              mcraptor_non_transit_avoided_modes_mode_switches_state>) {
                     if (use_restricted) {
                       return dir == direction::kForward
                                  ? restricted_range_search<direction::kForward>(

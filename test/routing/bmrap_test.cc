@@ -1178,10 +1178,10 @@ TEST(bmrap, guided_realization_survives_ties) {
       }
       auto ss = routing::search_state{};
       auto ms = routing::basic_mcraptor_state<
-          routing::arr_non_transit_mode_filter_mode_switches_criteria>{};
+          routing::arr_non_transit_avoided_modes_mode_switches_criteria>{};
       auto const check = [&](auto& algo_state, char const* engine) {
         auto const r = routing::bmrap_profile_search<
-            routing::arr_non_transit_mode_filter_mode_switches_criteria>(
+            routing::arr_non_transit_avoided_modes_mode_switches_criteria>(
             tt, nullptr, ss, algo_state, ms, q, dir, std::nullopt, true);
         auto const tag =
             fmt::format("{} {} {}", c.name_,
@@ -1452,7 +1452,7 @@ TEST(bmrap, gpu_matches_cpu) {
     expect_gpu_matches_cpu<routing::arr_non_transit_criteria>(dir);
     // the timetable has no flights, so this only pins that the extra label
     // field does not perturb the arrival-only result
-    expect_gpu_matches_cpu<routing::arr_mode_filter_criteria>(dir);
+    expect_gpu_matches_cpu<routing::arr_avoided_modes_criteria>(dir);
   }
 }
 
