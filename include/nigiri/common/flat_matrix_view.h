@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <iterator>
 
 #include "cista/cuda_check.h"
 
@@ -10,6 +11,7 @@ template <typename Span>
 struct base_flat_matrix_view {
   using value_type = typename Span::value_type;
   using size_type = typename Span::size_type;
+  using difference_type = typename Span::difference_type;
 
   struct row {
     CISTA_CUDA_COMPAT row(base_flat_matrix_view& matrix, size_type const i)
@@ -19,18 +21,10 @@ struct base_flat_matrix_view {
     // libc++ doesn't have std::span::const_iterator
     using const_iterator = iterator;
 
-    const_iterator begin() const {
-      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * i_);
-    }
-    const_iterator end() const {
-      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * (i_ + 1));
-    }
-    iterator begin() {
-      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * i_);
-    }
-    iterator end() {
-      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * (i_ + 1));
-    }
+    const_iterator begin() const { return matrix_.row_begin(i_); }
+    const_iterator end() const { return matrix_.row_begin(i_ + 1U); }
+    iterator begin() { return matrix_.row_begin(i_); }
+    iterator end() { return matrix_.row_begin(i_ + 1U); }
     friend const_iterator begin(row const& r) { return r.begin(); }
     friend const_iterator end(row const& r) { return r.end(); }
     friend iterator begin(row& r) { return r.begin(); }
@@ -53,12 +47,8 @@ struct base_flat_matrix_view {
 
     using iterator = typename Span::iterator;
 
-    iterator begin() const {
-      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * i_);
-    }
-    iterator end() const {
-      return std::next(matrix_.entries_.begin(), matrix_.n_columns_ * (i_ + 1));
-    }
+    iterator begin() const { return matrix_.row_begin(i_); }
+    iterator end() const { return matrix_.row_begin(i_ + 1U); }
     friend iterator begin(const_row const& r) { return r.begin(); }
     friend iterator end(const_row const& r) { return r.end(); }
 
@@ -101,6 +91,11 @@ struct base_flat_matrix_view {
   const_row at(size_type const i) const {
     verify(i < n_rows_, "matrix::at: index out of range");
     return {*this, i};
+  }
+
+  typename Span::iterator row_begin(size_type const i) const {
+    return std::next(entries_.begin(),
+                     static_cast<difference_type>(n_columns_ * i));
   }
 
   void reset(value_type const& t) {
