@@ -133,10 +133,13 @@ void place_footpaths(timetable const& tt,
 void finalize_journey(timetable const& tt,
                       rt_timetable const* rtt,
                       query const& q,
-                      journey& j) {
+                      journey& j,
+                      bool const optimize_fps) {
   place_footpaths(tt, rtt, q, j);
   map_to_bases(tt, rtt, j);
-  optimize_footpaths(tt, rtt, q, j);
+  if (optimize_fps) {
+    optimize_footpaths(tt, rtt, q, j);
+  }
   fix_transfer_durations(tt, rtt, q, j);
   map_to_bases(tt, rtt, j);
   j.is_reconstructed_ = true;
@@ -908,7 +911,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
     std::reverse(begin(j.legs_), end(j.legs_));
   }
 
-  finalize_journey(tt, rtt, journey_q, j);
+  finalize_journey(tt, rtt, journey_q, j,
+                   !raptor_state.skip_optimize_footpaths_);
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);

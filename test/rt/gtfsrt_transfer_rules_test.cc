@@ -24,12 +24,20 @@
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/mcraptor.h"
+#include "nigiri/routing/raptor_search.h"
+#include "nigiri/routing/search.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/rt_transfer_rules.h"
 #include "nigiri/timetable.h"
+
+#if defined(NIGIRI_CUDA)
+#include "nigiri/routing/gpu/mcraptor.h"
+#include "nigiri/routing/gpu/raptor.h"
+#endif
 
 #include "../raptor_search.h"
 #include "../transfer_rules_util.h"
@@ -1362,6 +1370,89 @@ TEST(gtfsrt_transfer_rules, banned_departure_keeps_walks_from_neighbours) {
           {"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S4"}}}});
   EXPECT_EQ("S4", stop_id_at(tt, rtt, "GX", 0U));
   EXPECT_EQ(at("10:45"), arrival(tt, &rtt, std::pair{"A2", "B"}, "09:00"));
+}
+
+// The journeys from -> to (departing at hhmm) of mcraptor with the walking
+// criterion, on the CPU and, in CUDA builds, the GPU. test::raptor_search only
+// checks them against raptor's departure, arrival and transfers.
+std::vector<std::pair<char const*, pareto_set<routing::journey>>> walk_journeys(
+    timetable const& tt,
+    rt_timetable& rtt,
+    char const* from,
+    char const* to,
+    std::string_view const hhmm) {
+  auto const q = station_query(tt, from, to, at(hhmm));
+  auto const run = [&](auto& state) {
+    auto ss = routing::search_state{};
+    return *routing::raptor_search(tt, &rtt, ss, state, q, direction::kForward)
+                .journeys_;
+  };
+  auto res =
+      std::vector<std::pair<char const*, pareto_set<routing::journey>>>{};
+  auto cpu = routing::mcraptor_non_transit_state{};
+  res.emplace_back("cpu", run(cpu));
+#if defined(NIGIRI_CUDA)
+  rtt.gpu_rtt_.ptr_ = routing::gpu::make_gpu_rtt(tt, rtt);
+  auto const gtt = routing::gpu::gpu_timetable{tt};
+  auto gpu = routing::gpu::gpu_mcraptor_non_transit_state{gtt};
+  res.emplace_back("gpu", run(gpu));
+#endif
+  return res;
+}
+
+// F has 15 min to change at S3 (other arrivals 6 min) and moves there: it
+// stands on a real-time virtual location of S3, 15 min of footpath away from
+// Y2. That footpath is a change within S3, no walk.
+//   Y1 (RY): S3 10:40 -> C 11:10   10 min after F: too short
+//   Y2 (RY): S3 10:50 -> C 11:20
+TEST(gtfsrt_transfer_rules, change_at_real_time_location_is_no_walk) {
+  auto const tt = load_network(
+      "S3,S3,2,360,,,,\nS3,S3,2,900,,,F,",
+      {.trips_ = {{"Y1", "RY", {{"S3", "10:40"}, {"C", "11:10"}}},
+                  {"Y2", "RY", {{"S3", "10:50"}, {"C", "11:20"}}}}});
+  auto rtt = rt::create_rt_timetable(tt, kDay);
+  update(tt, rtt, {{"F", {{.seq_ = 2U, .stop_id_ = "S1", .assigned_ = "S3"}}}});
+  ASSERT_LT(0U, rtt.n_rt_locations());
+  EXPECT_EQ(at("11:20"), arrival(tt, &rtt, kAtoC));
+  for (auto const& [engine, js] : walk_journeys(tt, rtt, "A", "C", "10:00")) {
+    EXPECT_EQ(1U, js.size()) << engine;
+    for (auto const& j : js) {
+      EXPECT_EQ(at("11:20"), j.arrival_time()) << engine;
+      EXPECT_EQ(0U, j.criteria_cost_) << engine;
+    }
+  }
+}
+
+// Y moves onto S4, where no arrival may change to it: all changes at S4 are
+// banned, or the changes to RY (Y then stands on a real-time virtual location
+// of its own). X1 is at S4 first, only the walk-in from X2 at S3 boards Y:
+// X1 must not change to Y (no walk: it would dominate) nor drop the walk-in.
+//   X1 (RX1): O 10:00 -> S4 10:30
+//   X2 (RX2): O 10:05 -> S3 10:31
+//   Y  (RY):  S3 10:40 -> E 11:00
+TEST(gtfsrt_transfer_rules, track_change_onto_banned_platform_keeps_walk_ins) {
+  for (auto const& [rules, n_rt_locations] :
+       {std::pair{"S4,S4,3,,,,,", 0U}, std::pair{"S4,S4,3,,,RY,,", 1U}}) {
+    auto const tt = load_network(
+        rules, {.stops_ = {{"O", 50.0, 5.8}, {"E", 50.0, 9.0}},
+                .trips_ = {{"X1", "RX1", {{"O", "10:00"}, {"S4", "10:30"}}},
+                           {"X2", "RX2", {{"O", "10:05"}, {"S3", "10:31"}}},
+                           {"Y", "RY", {{"S3", "10:40"}, {"E", "11:00"}}}}});
+    auto rtt = rt::create_rt_timetable(tt, kDay);
+    update(tt, rtt,
+           {{"Y", {{.seq_ = 1U, .stop_id_ = "S3", .assigned_ = "S4"}}}});
+    ASSERT_EQ("S4", stop_id_at(tt, rtt, "Y", 0U)) << rules;
+    ASSERT_EQ(n_rt_locations, rtt.n_rt_locations()) << rules;
+    EXPECT_EQ(at("11:00"), arrival(tt, &rtt, std::pair{"O", "E"})) << rules;
+    for (auto const& [engine, js] : walk_journeys(tt, rtt, "O", "E", "10:00")) {
+      EXPECT_EQ(1U, js.size()) << rules << ", " << engine;
+      for (auto const& j : js) {
+        auto const first = utl::find_if(j.legs_, test::is_transit);
+        ASSERT_NE(end(j.legs_), first) << rules << ", " << engine;
+        EXPECT_EQ(at("10:05"), first->dep_time_) << rules << ", " << engine;
+      }
+    }
+  }
 }
 
 // The arrival at `to` of a search that starts where trip_id stops at `stop`

@@ -16,6 +16,7 @@
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/mc_context.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/debug.h"
@@ -146,7 +147,8 @@ struct search {
         q_.prf_idx_ == 2U,
         no_compulsory_reservation,
         q_.transfer_time_settings_,
-        q_.prf_idx_};
+        q_.prf_idx_,
+        mc_context{.avoided_ = q_.avoided_claszes_}};
   }
 
   search(timetable const& tt,
@@ -173,7 +175,12 @@ struct search {
                    q_.require_car_transport_,
                    q_.no_compulsory_reservation_,
                    algo_state)},
-        timeout_(timeout) {}
+        timeout_(timeout) {
+    if constexpr (requires { algo_.set_td_start(q_.td_start_); }) {
+      algo_.set_td_start(q_.td_start_);
+      algo_.set_start_stops(q_.start_, q_.start_match_mode_);
+    }
+  }
 
   routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
@@ -294,8 +301,10 @@ struct search {
                                          state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
-        return std::tie(a.start_time_, a.transfers_, a) <
-               std::tie(b.start_time_, b.transfers_, b);
+        return std::tie(a.start_time_, a.transfers_, a.dest_time_,
+                        a.criteria_cost_,
+                        a) < std::tie(b.start_time_, b.transfers_, b.dest_time_,
+                                      b.criteria_cost_, b);
       });
     }
 
@@ -318,15 +327,20 @@ private:
 
   bool is_pretrip() const { return !is_ontrip(); }
 
+  // Journeys with the same (start, dest, transfers) and other criteria count
+  // once: the first of them is the one left undominated.
+  bool is_tuple_dominated(journey const& j) const {
+    return utl::any_of(state_.results_, [&](journey const& o) {
+      return o.tuple_dominates(j) && (!j.tuple_dominates(o) || &o < &j);
+    });
+  }
   unsigned n_results_in_interval() const {
-    if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
-      auto count = utl::count_if(state_.results_, [&](journey const& j) {
-        return search_interval_.contains(j.start_time_);
-      });
-      return static_cast<unsigned>(count);
-    } else {
-      return static_cast<unsigned>(state_.results_.size());
-    }
+    auto count = utl::count_if(state_.results_, [&](journey const& j) {
+      return (!holds_alternative<interval<unixtime_t>>(q_.start_time_) ||
+              search_interval_.contains(j.start_time_)) &&
+             !is_tuple_dominated(j);
+    });
+    return static_cast<unsigned>(count);
   }
 
   bool max_interval_reached() const {
