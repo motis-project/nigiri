@@ -384,7 +384,7 @@ TEST(routing, optimize_transfers_no_double_visit_opposite_directions) {
       {test::feed(
           {{"W", 50.0, 6.0},
            {"K1", 50.1, 6.0},
-           {"K2", 50.1011, 6.0},  // 120m
+           {"K2", 50.10045, 6.0},  // 50m
            {"D1", 50.2, 6.0},
            {"D2", 50.2001, 6.0},
            {"L", 50.3, 6.0},

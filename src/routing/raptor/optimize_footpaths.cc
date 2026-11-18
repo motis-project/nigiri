@@ -5,8 +5,6 @@
 #include <utility>
 #include <vector>
 
-#include "geo/latlng.h"
-
 #include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 
@@ -356,15 +354,6 @@ double get_penalty(timetable const& tt,
   return weight;
 }
 
-bool is_same_place(timetable const& tt,
-                   location_idx_t const a,
-                   location_idx_t const b) {
-  constexpr auto kMaxDistance = 200.0;  // [m]
-  return matches(tt, nullptr, location_match_mode::kEquivalent, a, b) ||
-         geo::distance(tt.locations_.coordinates_[a],
-                       tt.locations_.coordinates_[b]) <= kMaxDistance;
-}
-
 void optimize_transfers(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
@@ -477,8 +466,8 @@ void optimize_transfers(timetable const& tt,
             {stp_from, stp_to, fp, arr_fp,
              get_penalty(tt, fp_dur, dep - arr_fp, stp_from.get_location_idx(),
                          stp_to.get_location_idx(), from_trip, to_trip),
-             is_same_place(tt, stp_from.get_location_idx(),
-                           stp_to.get_location_idx())});
+             matches(tt, nullptr, location_match_mode::kEquivalent,
+                     stp_from.get_location_idx(), stp_to.get_location_idx())});
       }
     }
 
