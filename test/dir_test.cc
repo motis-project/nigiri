@@ -2,11 +2,15 @@
 
 #include "nigiri/loader/dir.h"
 
+#include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <vector>
 
 #include "utl/parser/cstr.h"
 #include "utl/zip.h"
+
+#include "wyhash.h"
 
 using namespace nigiri::loader;
 
@@ -100,7 +104,7 @@ TEST(dir, in_memory_zip) {
 // the top-level directory also creates the stamm/ directory entry required
 // by zip_dir::list_files.)
 TEST(dir, zstd) {
-  auto constexpr const zugart = std::string_view{"0000001E\n0000002E\n"};
+  constexpr auto const zugart = std::string_view{"0000001E\n0000002E\n"};
 
   auto const zip = zip_dir{"test/test_data/mss-dayshift3-zstd.zip"};
   auto const mem = mem_dir{mem_dir::dir_t{{"stamm/bahnhof.101", std::string{data}},
@@ -121,6 +125,14 @@ TEST(dir, zstd) {
       zip_dir{read_file_bytes("test/test_data/mss-dayshift3-zstd.zip")};
   EXPECT_EQ(zip_mem.get_file("stamm/bahnhof.101").data(),
             std::string_view{data});
+}
+
+TEST(dir, hash) {
+  auto const raw = read_file_bytes("test/test_data/mss-dayshift3-zstd.zip");
+  auto const zip = zip_dir{"test/test_data/mss-dayshift3-zstd.zip"};
+  auto const mem = zip_dir{raw};
+  EXPECT_EQ(zip.hash(), wyhash(raw.data(), raw.size(), 0U, _wyp));
+  EXPECT_EQ(mem.hash(), zip.hash());
 }
 
 TEST(nigiri, to_dir) {
