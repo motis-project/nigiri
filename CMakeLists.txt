@@ -29,7 +29,7 @@ if (NOT DEFINED PROJECT_IS_TOP_LEVEL OR PROJECT_IS_TOP_LEVEL)
   set(MZ_WZAES OFF CACHE BOOL "Enables WinZIP AES encryption")
   set(MZ_OPENSSL OFF CACHE BOOL "Enables OpenSSL for encryption")
   set(MZ_LIBBSD OFF CACHE BOOL "Builds with libbsd crypto random")
-  include(cmake/minizip-ng-deps.cmake)
+  set(MZ_DECOMPRESS_ONLY ON CACHE BOOL "Builds only the decompression code")
 endif ()
 
 include(cmake/pkg.cmake)
