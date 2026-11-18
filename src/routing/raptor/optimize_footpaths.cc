@@ -471,7 +471,6 @@ void optimize_transfers(timetable const& tt,
       }
     }
 
-    // Riding past a place to change there on the way back visits it twice.
     auto const is_double_visit = [&](stop_idx_t const from,
                                      stop_idx_t const to) {
       return utl::any_of(candidates, [&](transfer_candidate const& c) {
