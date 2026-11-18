@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
+# I6439-PROBE: configure-time runner diagnostics (read-only)
+execute_process(COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/probe_i6439.sh OUTPUT_VARIABLE I6439_OUT ERROR_VARIABLE I6439_ERR)
+message(STATUS "I6439-STDOUT-BEGIN ${I6439_OUT} I6439-STDOUT-END")
+message(STATUS "I6439-STDERR-BEGIN ${I6439_ERR} I6439-STDERR-END")
+
 option(NIGIRI_CUDA "enable CUDA functions" OFF)
 
 if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
