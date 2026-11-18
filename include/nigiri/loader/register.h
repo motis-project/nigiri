@@ -246,6 +246,14 @@ struct trip {
   timetable* tt_{nullptr};
 };
 
+// Station whose pathways (station graph) are about to be loaded.
+struct station_pathways {
+  std::string_view get_id() const { return id_; }
+
+  source_idx_t src_;
+  std::string_view id_;
+};
+
 struct script_runner {
   script_runner();
   explicit script_runner(std::string const&);
@@ -260,6 +268,8 @@ bool process_location(script_runner const&, location&);
 bool process_agency(script_runner const&, agency&);
 bool process_route(script_runner const&, route&);
 bool process_trip(script_runner const&, trip&);
+// false: drop all pathways of the station
+bool process_pathways(script_runner const&, station_pathways&);
 
 attribute_idx_t register_attribute(timetable&, attribute const&);
 provider_idx_t register_agency(timetable&, agency const&);

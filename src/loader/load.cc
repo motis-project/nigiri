@@ -12,6 +12,7 @@
 #include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/isa/loader.h"
 #include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
 
@@ -25,6 +26,7 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   loaders.emplace_back(std::make_unique<hrd::hrd_5_20_39_loader>());
   loaders.emplace_back(std::make_unique<hrd::hrd_5_20_avv_loader>());
   loaders.emplace_back(std::make_unique<netex::netex_loader>());
+  loaders.emplace_back(std::make_unique<isa::isa_station_graph_loader>());
   return loaders;
 }
 

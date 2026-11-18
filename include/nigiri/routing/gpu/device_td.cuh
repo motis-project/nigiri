@@ -61,12 +61,13 @@ __device__ void d_for_each_td_footpath(Collection const& c,
   auto i = std::uint32_t{0U};
   while (i < n) {
     auto j = i + 1U;
-    while (j < n && c[j].target_ == c[i].target_) {
+    while (j < n && c[j].target_ == c[i].target_ &&
+           c[j].restriction_ == c[i].restriction_) {
       ++j;
     }
     auto const r = d_get_td_duration<SearchDir>(c, i, j, t);
     if (r.valid_) {
-      f(c[i].target_, r.duration_);
+      f(c[i].target_, r.duration_, c[r.idx_].duration_, c[i].restriction_);
     }
     i = j;
   }

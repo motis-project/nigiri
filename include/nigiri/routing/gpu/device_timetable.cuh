@@ -91,8 +91,20 @@ struct device_rt_timetable {
   struct rt_footpath {
     location_idx_t from_;
     footpath fp_;
+    footpath_restriction restriction_;
   };
   cuda::std::span<rt_footpath const> rt_footpaths_;
+
+  // Restricted footpaths of the query profile blocked by elevators
+  // (rt_timetable::blocked_restricted_out_/in_), empty if none.
+  cuda::std::span<std::uint64_t const> blocked_restricted_out_;
+  cuda::std::span<std::uint64_t const> blocked_restricted_in_;
+
+  __device__ __forceinline__ bool is_blocked(bool const is_out,
+                                             std::uint32_t const i) const {
+    auto const& b = is_out ? blocked_restricted_out_ : blocked_restricted_in_;
+    return i / 64U < b.size() && ((b[i / 64U] >> (i % 64U)) & 1U) != 0U;
+  }
 
   d_vecmap_view<rt_location_idx_t, location_idx_t> rt_base_;
 
@@ -163,6 +175,15 @@ struct device_timetable {
   cuda::std::array<d_vecvec_view<decltype(t{}.locations_.footpaths_in_[0])>,
                    kNProfiles>
       footpaths_in_;
+  // records of the restricted tails of the footpath lists
+  cuda::std::array<
+      d_vecvec_view<decltype(t{}.locations_.footpath_restrictions_out_[0])>,
+      kNProfiles>
+      footpath_restrictions_out_;
+  cuda::std::array<
+      d_vecvec_view<decltype(t{}.locations_.footpath_restrictions_in_[0])>,
+      kNProfiles>
+      footpath_restrictions_in_;
 
   d_vecmap_view<transport_idx_t, delta> first_dep_;
   d_vecmap_view<transport_idx_t, std::uint16_t> transport_pattern_;

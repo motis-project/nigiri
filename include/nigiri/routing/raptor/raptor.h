@@ -104,7 +104,7 @@ struct raptor {
         via_stops_{via_stops},
         base_{base},
         bounds_{std::as_const(state_).template get_bounds<Vias>()},
-        prf_idx_{prf_idx},
+        prf_idx_{tt.locations_.footpath_profile(prf_idx)},
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
@@ -854,9 +854,35 @@ private:
         return;
       }
 
-      auto const relax_fps = [&](auto const& bucket) {
-        for (auto const& fp : bucket) {
+      // Entries from `split` on carry restrictions[i - split] (blocked:
+      // record bit blocked_offset + i - split).
+      auto const relax_fps = [&](auto const& bucket,
+                                 footpath_restriction const* restrictions,
+                                 std::size_t const split,
+                                 bitvec const* blocked = nullptr,
+                                 std::size_t const blocked_offset = 0U) {
+        for (auto fp_idx = 0U; fp_idx != bucket.size(); ++fp_idx) {
+          auto const fp = bucket[fp_idx];
+          auto const* r = restrictions != nullptr && fp_idx >= split
+                              ? &restrictions[fp_idx - split]
+                              : nullptr;
+          if (r != nullptr && blocked != nullptr &&
+              blocked_offset + fp_idx - split < blocked->size() &&
+              blocked->test(static_cast<bitvec::size_type>(blocked_offset +
+                                                           fp_idx - split))) {
+            continue;
+          }
           if (!kFwd && use_td_fps && has_td_fps(fp.target(), true)) {
+            continue;
+          }
+
+          auto const fp_duration =
+              r == nullptr
+                  ? static_cast<int>(adjusted_transfer_time(
+                        transfer_time_settings_, fp.duration().count()))
+                  : adjusted_transfer_time(transfer_time_settings_,
+                                           fp.duration().count(), *r);
+          if (fp_duration < 0) {
             continue;
           }
 
@@ -878,10 +904,7 @@ private:
                 auto const stay =
                     via_stay(v, start_v) + via_stay(start_v, target_v);
                 auto const fp_target_time =
-                    clamp(tmp_time +
-                          dir(adjusted_transfer_time(transfer_time_settings_,
-                                                     fp.duration().count()) +
-                              stay.count()));
+                    clamp(tmp_time + dir(fp_duration + stay.count()));
                 if (bounds_last_k_ == 0U &&
                     is_better(fp_target_time, best_[target][target_v])) {
                   round_times_[k][target][target_v] = get_best(
@@ -945,15 +968,33 @@ private:
           }
         }
       };
-      auto const& static_fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx_]
-                                    : tt_.locations_.footpaths_in_[prf_idx_];
+      auto const& loc = tt_.locations_;
+      auto const& static_fps =
+          kFwd ? loc.footpaths_out_[prf_idx_] : loc.footpaths_in_[prf_idx_];
       if (l_idx < static_fps.size()) {
-        relax_fps(static_fps[l_idx]);
+        auto const& records = kFwd ? loc.footpath_restrictions_out_[prf_idx_]
+                                   : loc.footpath_restrictions_in_[prf_idx_];
+        if (l_idx < records.size()) {
+          auto const* blocked = static_cast<bitvec const*>(nullptr);
+          if constexpr (Rt) {
+            blocked = &(kFwd ? rtt_->blocked_restricted_out_
+                             : rtt_->blocked_restricted_in_)[prf_idx_];
+          }
+          relax_fps(static_fps[l_idx], records[l_idx].data(),
+                    loc.restricted_begin(prf_idx_, kFwd, l_idx), blocked,
+                    records.bucket_starts_[to_idx(l_idx)]);
+        } else {
+          relax_fps(static_fps[l_idx], nullptr, static_fps[l_idx].size());
+        }
       }
       if constexpr (Rt) {
         if (profile_uses_rt_virts(prf_idx_)) {
           relax_fps(
-              (kFwd ? rtt_->rt_footpaths_out_ : rtt_->rt_footpaths_in_)[l_idx]);
+              (kFwd ? rtt_->rt_footpaths_out_ : rtt_->rt_footpaths_in_)[l_idx],
+              (kFwd ? rtt_->rt_footpath_restrictions_out_
+                    : rtt_->rt_footpath_restrictions_in_)[l_idx]
+                  .data(),
+              0U);
         }
       }
     });
@@ -986,8 +1027,14 @@ private:
         }
         for_each_footpath<SearchDir>(
             fps, to_unix(tmp_time),
-            [&](location_idx_t const fp_target, duration_t const duration,
-                auto) {
+            [&](location_idx_t const fp_target, duration_t const td_duration,
+                duration_t, footpath_restriction const& r) {
+              // transfer time settings don't apply to time-dependent
+              // footpaths, their restriction records do
+              if (!is_usable(r, transfer_time_settings_.restrictions_)) {
+                return utl::cflow::kContinue;
+              }
+              auto const duration = td_duration;
               ++stats_.n_footpaths_visited_;
 
               auto const target = to_idx(fp_target);

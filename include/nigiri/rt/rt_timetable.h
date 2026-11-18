@@ -136,11 +136,15 @@ struct rt_timetable {
   }
 
   bool affects(interval<unixtime_t> const iv,
-               profile_idx_t const prf_idx) const noexcept {
+               profile_idx_t const query_prf) const noexcept {
+    auto const prf_idx = tt_ == nullptr
+                             ? query_prf
+                             : tt_->locations_.footpath_profile(query_prf);
     return (has_profile_td_footpaths(prf_idx) &&
             (has_td_footpaths_out_[prf_idx].any() ||
              has_td_footpaths_in_[prf_idx].any())) ||
-           iv.overlaps(coverage_);
+           blocked_restricted_out_[prf_idx].any() ||
+           blocked_restricted_in_[prf_idx].any() || iv.overlaps(coverage_);
   }
 
   interval<unixtime_t> rt_transport_interval(
@@ -466,6 +470,25 @@ struct rt_timetable {
 
   vecvec<location_idx_t, footpath> rt_footpaths_out_;
   vecvec<location_idx_t, footpath> rt_footpaths_in_;
+  // Aligned with rt_footpaths_out_/in_: station graph restrictions of each
+  // rt footpath (default record = unrestricted).
+  vecvec<location_idx_t, footpath_restriction> rt_footpath_restrictions_out_;
+  vecvec<location_idx_t, footpath_restriction> rt_footpath_restrictions_in_;
+
+  // Station graph footpaths that need an out-of-service elevator: bit i =
+  // record i of the timetable's footpath_restrictions_out_/in_[prf] data;
+  // blocked_entrance_paths_: bit i = station_paths::entrance_paths_[i].
+  std::array<bitvec, kNProfiles> blocked_restricted_out_;
+  std::array<bitvec, kNProfiles> blocked_restricted_in_;
+  bitvec blocked_entrance_paths_;
+
+  bool is_blocked(profile_idx_t const prf,
+                  bool const is_out,
+                  std::size_t const i) const {
+    auto const& b =
+        (is_out ? blocked_restricted_out_ : blocked_restricted_in_)[prf];
+    return i < b.size() && b.test(static_cast<bitvec::size_type>(i));
+  }
 
   // Lower bound graph extension.
   bitvec_map<location_idx_t> fwd_search_lb_graph_has_edges_;

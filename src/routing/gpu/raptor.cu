@@ -55,6 +55,8 @@ constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
 struct gpu_timetable::impl {
   using t = timetable;
   using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
+  using fp_restriction_t =
+      decltype(t{}.locations_.footpath_restrictions_out_[0]);
 
   static std::vector<std::uint32_t> build_route_stop_offset(
       timetable const& tt) {
@@ -121,6 +123,10 @@ struct gpu_timetable::impl {
     for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
       footpaths_out_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_out_[p]};
       footpaths_in_[p] = device_vecvec<fp_t>{tt.locations_.footpaths_in_[p]};
+      footpath_restrictions_out_[p] = device_vecvec<fp_restriction_t>{
+          tt.locations_.footpath_restrictions_out_[p]};
+      footpath_restrictions_in_[p] = device_vecvec<fp_restriction_t>{
+          tt.locations_.footpath_restrictions_in_[p]};
     }
 
     // device-resident (launch-arg size, see device_transport_filters)
@@ -162,6 +168,8 @@ struct gpu_timetable::impl {
     for (auto p = 0U; p != kNProfiles; ++p) {
       dt.footpaths_out_[p] = to_view(footpaths_out_[p]);
       dt.footpaths_in_[p] = to_view(footpaths_in_[p]);
+      dt.footpath_restrictions_out_[p] = to_view(footpath_restrictions_out_[p]);
+      dt.footpath_restrictions_in_[p] = to_view(footpath_restrictions_in_[p]);
     }
     return dt;
   }
@@ -173,6 +181,10 @@ struct gpu_timetable::impl {
   thrust::device_vector<location_idx_t> base_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_out_;
   std::array<device_vecvec<fp_t>, kNProfiles> footpaths_in_;
+  std::array<device_vecvec<fp_restriction_t>, kNProfiles>
+      footpath_restrictions_out_;
+  std::array<device_vecvec<fp_restriction_t>, kNProfiles>
+      footpath_restrictions_in_;
 
   thrust::device_vector<delta> first_dep_;
   thrust::device_vector<std::uint16_t> transport_pattern_;
@@ -246,8 +258,10 @@ struct gpu_rt_timetable::impl {
       rt_timetable const& rtt) {
     auto v = std::vector<device_rt_timetable::rt_footpath>{};
     for (auto l = location_idx_t{0U}; l != rtt.rt_footpaths_out_.size(); ++l) {
-      for (auto const fp : rtt.rt_footpaths_out_[l]) {
-        v.push_back({l, fp});
+      auto const fps = rtt.rt_footpaths_out_[l];
+      auto const restrictions = rtt.rt_footpath_restrictions_out_[l];
+      for (auto i = 0U; i != fps.size(); ++i) {
+        v.push_back({l, fps[i], restrictions[i]});
       }
     }
     return v;
@@ -315,6 +329,18 @@ struct gpu_rt_timetable::impl {
     rt_filters_ctx_.resize(1);
     thrust::copy_n(&f, 1, rt_filters_ctx_.begin());
 
+    // Restricted footpaths blocked by out-of-service elevators.
+    for (auto p = profile_idx_t{0U}; p != kNProfiles; ++p) {
+      if (rtt.blocked_restricted_out_[p].any()) {
+        blocked_restricted_out_[p] =
+            to_device(rtt.blocked_restricted_out_[p].blocks_);
+      }
+      if (rtt.blocked_restricted_in_[p].any()) {
+        blocked_restricted_in_[p] =
+            to_device(rtt.blocked_restricted_in_[p].blocks_);
+      }
+    }
+
     // Copy td-footpaths.
     auto const pad_to_rt_capacity = [&](bitvec_map<location_idx_t> v) {
       v.resize(tt.n_locations() + kRtLocationCapacity);
@@ -363,6 +389,8 @@ struct gpu_rt_timetable::impl {
         .rt_transport_clasz_ = to_view(rt_transport_clasz_),
         .rt_footpaths_ = to_view(rt_footpaths_)
                              .first(uses_virts ? rt_footpaths_.size() : 0U),
+        .blocked_restricted_out_ = to_view(blocked_restricted_out_[prf]),
+        .blocked_restricted_in_ = to_view(blocked_restricted_in_[prf]),
         .rt_base_ = to_view(rt_base_),
         .transport_traffic_days_ = to_view(transport_traffic_days_),
         .bitfields_ = to_view(bitfields_),
@@ -383,6 +411,10 @@ struct gpu_rt_timetable::impl {
   thrust::device_vector<clasz> rt_transport_clasz_;
 
   thrust::device_vector<device_rt_timetable::rt_footpath> rt_footpaths_;
+  std::array<thrust::device_vector<std::uint64_t>, kNProfiles>
+      blocked_restricted_out_;
+  std::array<thrust::device_vector<std::uint64_t>, kNProfiles>
+      blocked_restricted_in_;
   thrust::device_vector<location_idx_t> rt_base_;
 
   bool has_rt_virts_{false};
@@ -671,7 +703,7 @@ gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
       is_wheelchair_{is_wheelchair},
       no_compulsory_reservation_{no_compulsory_reservation},
       transfer_time_settings_{tts},
-      prf_idx_{prf_idx},
+      prf_idx_{tt.locations_.footpath_profile(prf_idx)},
       bounds_{state.impl_->bounds_dev_.ptr_} {
   utl::verify(rtt == nullptr || gpu_rtt_ != nullptr,
               "GPU raptor: rt search requires the uploaded device rt "

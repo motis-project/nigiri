@@ -423,6 +423,7 @@ struct script_runner::impl {
   sol::protected_function process_location_;
   sol::protected_function process_route_;
   sol::protected_function process_trip_;
+  sol::protected_function process_pathways_;
 };
 
 constexpr std::pair<std::string_view, int> kGTFSRouteTypes[] = {
@@ -572,6 +573,11 @@ script_runner::script_runner(std::string const& user_script)
       "set_timezone", &agency::set_timezone  //
   );
 
+  impl_->lua_.new_usertype<station_pathways>(  //
+      "station_pathways",  //
+      "get_id", &station_pathways::get_id  //
+  );
+
   impl_->lua_.new_usertype<location>(
       "location",  //
       "get_id", &location::get_id,  //
@@ -649,13 +655,14 @@ script_runner::script_runner(std::string const& user_script)
   impl_->process_location_ = impl_->lua_["process_location"];
   impl_->process_route_ = impl_->lua_["process_route"];
   impl_->process_trip_ = impl_->lua_["process_trip"];
+  impl_->process_pathways_ = impl_->lua_["process_pathways"];
 
   log(log_lvl::info, "nigiri.loader.user_script",
       "user script handlers: "
-      "attribute={}, agency={}, location={}, route={}, trip={}",
+      "attribute={}, agency={}, location={}, route={}, trip={}, pathways={}",
       impl_->process_attribute_.valid(), impl_->process_agency_.valid(),
       impl_->process_location_.valid(), impl_->process_route_.valid(),
-      impl_->process_trip_.valid());
+      impl_->process_trip_.valid(), impl_->process_pathways_.valid());
 }
 
 script_runner::~script_runner() = default;
@@ -711,6 +718,13 @@ bool process_trip(script_runner const& r, trip& x) {
     return true;
   }
   return process(r.impl_->process_trip_, x);
+}
+
+bool process_pathways(script_runner const& r, station_pathways& x) {
+  if (r.impl_ == nullptr) {
+    return true;
+  }
+  return process(r.impl_->process_pathways_, x);
 }
 
 attribute_idx_t register_attribute(timetable& tt, attribute const& a) {

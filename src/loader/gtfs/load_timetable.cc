@@ -24,6 +24,7 @@
 #include "nigiri/loader/gtfs/flex.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
+#include "nigiri/loader/gtfs/pathways.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/route_key.h"
 #include "nigiri/loader/gtfs/seated.h"
@@ -89,9 +90,13 @@ void load_timetable(loader_config const& config,
   auto [agencies, agency_ticketing] =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
                     config.default_tz_, user_script);
+  auto const stops_file = load(kStopFile);
   auto const [stops, stops_accessible] = read_stops(
-      src, tt, ctx, i18n, timezones, load(kStopFile).data(),
+      src, tt, ctx, i18n, timezones, stops_file.data(),
       config.link_stop_distance_, config.default_transfer_time_, user_script);
+  read_pathways(src, ctx.station_graph_, stops, stops_file.data(),
+                load(kLevelsFile).data(), load(kPathwaysFile).data(),
+                user_script);
   add_stop_groups(tt, ctx, load(kStopGroupElementsFile).data(), stops);
   auto const routes =
       read_routes(src, tt, ctx, i18n, timezones, agencies,

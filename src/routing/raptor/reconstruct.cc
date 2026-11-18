@@ -211,36 +211,44 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   } else {
     trace_reconstruct("  direct start mode\n");
 
-    for (auto const fp : get_transfers<flip(SearchDir)>(tt, rtt, q.prf_idx_,
-                                                        leg_start_location)) {
-      auto const fp_duration = adjusted_transfer_time(q.transfer_time_settings_,
-                                                      fp.duration().count());
-      // A walk leaves a start stop from the stop (see get_starts).
-      auto const src = fp.target();
-      // The stay at the via before the walk to a stop that is no via.
-      auto const stay =
-          v != 0U && !is_start_via &&
-                  matches(tt, nullptr, location_match_mode::kEquivalent,
-                          q.via_stops_.front().location_,
-                          rt::static_location(rtt, src))
-              ? q.via_stops_.front().stay_
-              : duration_t{0};
-      if (to_idx(src) < tt.n_locations() && is_journey_start(tt, q, src) &&
-          !(tt.locations_.is_virt(src) &&
-            is_journey_start(tt, q, tt.base(src))) &&
-          fp_target_time != kInvalidDelta<SearchDir> &&
-          start_matches(static_cast<delta_t>(j_start_time +
-                                             dir(stay.count() + fp_duration)),
-                        fp_arrival_time)) {
-        trace_rc_fp_start_found;
-        return journey::leg{SearchDir,
-                            fp.target(),
-                            leg_start_location,
-                            j.start_time_ + dir(stay),
-                            delta_to_unix(base, fp_arrival_time),
-                            footpath{fp.target(), fp.duration()}};
-      }
-      trace_rc_fp_start_no_match;
+    auto start_leg = std::optional<journey::leg>{};
+    for_each_transfer<flip(SearchDir)>(
+        tt, rtt, q.prf_idx_, q.transfer_time_settings_, leg_start_location,
+        [&](footpath const fp, duration_t const adjusted) {
+          if (start_leg.has_value()) {
+            return;
+          }
+          auto const fp_duration = adjusted.count();
+          // A walk leaves a start stop from the stop (see get_starts).
+          auto const src = fp.target();
+          // The stay at the via before the walk to a stop that is no via.
+          auto const stay =
+              v != 0U && !is_start_via &&
+                      matches(tt, nullptr, location_match_mode::kEquivalent,
+                              q.via_stops_.front().location_,
+                              rt::static_location(rtt, src))
+                  ? q.via_stops_.front().stay_
+                  : duration_t{0};
+          if (to_idx(src) < tt.n_locations() && is_journey_start(tt, q, src) &&
+              !(tt.locations_.is_virt(src) &&
+                is_journey_start(tt, q, tt.base(src))) &&
+              fp_target_time != kInvalidDelta<SearchDir> &&
+              start_matches(static_cast<delta_t>(
+                                j_start_time + dir(stay.count() + fp_duration)),
+                            fp_arrival_time)) {
+            trace_rc_fp_start_found;
+            start_leg = journey::leg{SearchDir,
+                                     fp.target(),
+                                     leg_start_location,
+                                     j.start_time_ + dir(stay),
+                                     delta_to_unix(base, fp_arrival_time),
+                                     footpath{fp.target(), fp.duration()}};
+            return;
+          }
+          trace_rc_fp_start_no_match;
+        });
+    if (start_leg.has_value()) {
+      return std::move(*start_leg);
     }
   }
 
@@ -565,12 +573,15 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const check_fp =
       [&](unsigned const k, location_idx_t const l, delta_t const curr_time,
           location_idx_t const target, duration_t const duration,
-          bool const adjust_transfer_time, bool const is_td_footpath)
-      -> std::optional<std::pair<journey::leg, journey::leg>> {
-    auto const fp_duration =
-        adjust_transfer_time ? adjusted_transfer_time(q.transfer_time_settings_,
-                                                      duration.count())
-                             : duration.count();
+          bool const adjust_transfer_time, bool const is_td_footpath,
+          int const adjusted_duration =
+              -1) -> std::optional<std::pair<journey::leg, journey::leg>> {
+    auto const fp_duration = static_cast<duration_t::rep>(
+        adjusted_duration >= 0 ? adjusted_duration
+        : adjust_transfer_time
+            ? static_cast<int>(adjusted_transfer_time(q.transfer_time_settings_,
+                                                      duration.count()))
+            : static_cast<int>(duration.count()));
 
     auto const backup_v = v;
 
@@ -831,31 +842,37 @@ void reconstruct_journey_with_vias(timetable const& tt,
       return routing::is_td_source(rtt, q.prf_idx_, x);
     };
     if (kFwd || !is_td_source(l)) {
-      for (auto const fp :
-           get_transfers<flip(SearchDir)>(tt, rtt, q.prf_idx_, l)) {
-        if (kFwd && is_td_source(fp.target())) {
-          continue;
-        }
-        auto fp_legs =
-            check_fp(k, l, curr_time, fp.target(), fp.duration(), true, false);
-        if (fp_legs.has_value()) {
-          return std::move(*fp_legs);
-        }
+      auto fp_legs = std::optional<std::pair<journey::leg, journey::leg>>{};
+      for_each_transfer<flip(SearchDir)>(
+          tt, rtt, q.prf_idx_, q.transfer_time_settings_, l,
+          [&](footpath const fp, duration_t const adjusted) {
+            if (fp_legs.has_value() || (kFwd && is_td_source(fp.target()))) {
+              return;
+            }
+            fp_legs = check_fp(k, l, curr_time, fp.target(), fp.duration(),
+                               true, false, adjusted.count());
+          });
+      if (fp_legs.has_value()) {
+        return std::move(*fp_legs);
       }
     }
 
-    if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
-        (kFwd ? rtt->has_td_footpaths_in_
-              : rtt->has_td_footpaths_out_)[q.prf_idx_]
+    auto const td_prf = tt.locations_.footpath_profile(q.prf_idx_);
+    if (rtt != nullptr && has_profile_td_footpaths(td_prf) &&
+        (kFwd ? rtt->has_td_footpaths_in_ : rtt->has_td_footpaths_out_)[td_prf]
             .test(l)) {
       trace_reconstruct("CHECKING TD FOOTPATHS OF {}\n", loc{tt, l});
-      auto const td_footpaths = kFwd ? rtt->td_footpaths_in_[q.prf_idx_][l]
-                                     : rtt->td_footpaths_out_[q.prf_idx_][l];
+      auto const td_footpaths = kFwd ? rtt->td_footpaths_in_[td_prf][l]
+                                     : rtt->td_footpaths_out_[td_prf][l];
       auto const unix_now = delta_to_unix(base, curr_time);
       auto legs = std::optional<std::pair<journey::leg, journey::leg>>{};
       for_each_footpath<flip(SearchDir)>(
           td_footpaths, unix_now,
-          [&](location_idx_t const target, duration_t const duration, auto) {
+          [&](location_idx_t const target, duration_t const duration,
+              duration_t, footpath_restriction const& r) {
+            if (!is_usable(r, q.transfer_time_settings_.restrictions_)) {
+              return utl::cflow::kContinue;
+            }
             auto fp_legs =
                 check_fp(k, l, curr_time, target, duration, false, true);
             if (fp_legs.has_value()) {

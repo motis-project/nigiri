@@ -183,13 +183,14 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
               locs.insert(fp.target());
             }
 
-            if (has_td_arr == nullptr || q.prf_idx_ >= has_td_arr->size() ||
-                to_idx(l) >= (*has_td_arr)[q.prf_idx_].size() ||
-                !(*has_td_arr)[q.prf_idx_][l]) {
+            auto const td_prf = tt.locations_.footpath_profile(q.prf_idx_);
+            if (has_td_arr == nullptr || td_prf >= has_td_arr->size() ||
+                to_idx(l) >= (*has_td_arr)[td_prf].size() ||
+                !(*has_td_arr)[td_prf][l]) {
               return;
             }
 
-            for (auto const& tdfp : (*td_fps_arr)[q.prf_idx_][l]) {
+            for (auto const& tdfp : (*td_fps_arr)[td_prf][l]) {
               locs.insert(tdfp.target_);
             }
           });

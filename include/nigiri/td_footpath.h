@@ -1,5 +1,8 @@
 #pragma once
 
+#include <tuple>
+#include <type_traits>
+
 #include <map>
 #include <span>
 #include <vector>
@@ -12,6 +15,7 @@
 
 #include "nigiri/constants.h"
 #include "nigiri/footpath.h"
+#include "nigiri/footpath_restriction.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/types.h"
 
@@ -22,11 +26,20 @@ struct timetable;
 constexpr auto const kNull = unixtime_t{0_minutes};
 constexpr auto const kTdFootpathBan = duration_t::max();
 
+// One time series per (target, restriction): station graph / routed
+// alternatives keep their restriction record (default: unrestricted). Sorted
+// by target, restriction, then time.
 struct td_footpath {
-  CISTA_FRIEND_COMPARABLE(td_footpath)
+  friend bool operator==(td_footpath const&, td_footpath const&) = default;
+  friend bool operator<(td_footpath const& a, td_footpath const& b) {
+    return std::tie(a.target_, a.restriction_, a.valid_from_, a.duration_) <
+           std::tie(b.target_, b.restriction_, b.valid_from_, b.duration_);
+  }
+
   location_idx_t target_;
   unixtime_t valid_from_;
   duration_t duration_;
+  footpath_restriction restriction_{};
 };
 
 template <direction SearchDir, typename Collection>
@@ -82,20 +95,27 @@ get_td_duration(direction const search_dir,
              : get_td_duration<direction::kBackward>(c, t);
 }
 
-// Callback: target, duration and walking time. The duration includes waiting
-// for the footpath to become usable and is not limited to
-// footpath::kMax, the walking time doesn't include waiting.
+// Callback: target, duration, walking time and restriction record. The
+// duration includes waiting for the footpath to become usable and is not
+// limited to footpath::kMax, the walking time doesn't include waiting.
 template <direction SearchDir, typename Collection, typename Fn>
 void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
   utl::equal_ranges_linear(
       begin(c), end(c),
       [](td_footpath const& a, td_footpath const& b) {
-        return a.target_ == b.target_;
+        return a.target_ == b.target_ && a.restriction_ == b.restriction_;
       },
       [&](auto&& from, auto&& to) {
         auto const fp = get_td_duration<SearchDir>(std::span{from, to}, t);
         if (fp.has_value()) {
-          f(from->target_, fp->first, fp->second.duration_);
+          if constexpr (std::is_invocable_v<Fn, location_idx_t, duration_t,
+                                            duration_t,
+                                            footpath_restriction const&>) {
+            f(from->target_, fp->first, fp->second.duration_,
+              from->restriction_);
+          } else {
+            f(from->target_, fp->first, fp->second.duration_);
+          }
         }
       });
 }

@@ -78,7 +78,18 @@ inline timetable load_feeds(
       {.merge_dupes_intra_src_ = false,
        .merge_dupes_inter_src_ = false,
        .max_footpath_length_ = std::numeric_limits<std::uint16_t>::max(),
-       .compute_walks_ = std::move(walks)});
+       .compute_walks_ =
+           walks ? decltype(loader::finalize_options::
+                                compute_walks_){[w = std::move(walks)](
+                                                    timetable& tt,
+                                                    mutable_fws_multimap<
+                                                        location_idx_t,
+                                                        footpath>& x,
+                                                    loader::
+                                                        station_footpaths_t&) {
+             w(tt, x);
+           }}
+                 : nullptr});
 }
 
 // A feed built from its stops, trips and transfers.txt rows.

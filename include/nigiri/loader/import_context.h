@@ -2,6 +2,7 @@
 
 #include <span>
 
+#include "nigiri/loader/station_graph.h"
 #include "nigiri/common/dedup_vecvec.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -57,6 +58,8 @@ struct import_context {
       section_directions_;
 
   hash_map<bitfield, bitfield_idx_t> bitfields_;
+
+  station_graph station_graph_;
 };
 
 bitfield_idx_t register_bitfield(timetable&, import_context&, bitfield const&);

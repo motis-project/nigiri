@@ -326,12 +326,11 @@ void get_starts(
               return;
             }
             auto const is_via = start_via.contains(rt::static_location(rtt, l));
-            for (auto const fp :
-                 get_transfers(tt, rtt, prf_idx, search_dir, l)) {
-              update(fp.target(),
-                     o.duration() + adjusted_transfer_time(tts, fp.duration()),
-                     true, is_via);
-            }
+            for_each_transfer(tt, rtt, prf_idx, tts, search_dir, l,
+                              [&](footpath const fp, duration_t const d) {
+                                update(fp.target(), o.duration() + d, true,
+                                       is_via);
+                              });
           });
     }
   }

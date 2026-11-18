@@ -61,15 +61,16 @@ void dijkstra(timetable const& tt,
                   });
   }
 
-  dijkstra(fwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-               : tt.bwd_search_lb_graph_[q.prf_idx_],
-           rtt == nullptr ? nullptr
-                          : &(fwd ? rtt->fwd_search_lb_graph_has_edges_
-                                  : rtt->bwd_search_lb_graph_has_edges_),
-           rtt == nullptr
-               ? nullptr
-               : &(fwd ? rtt->fwd_search_lb_graph_ : rtt->bwd_search_lb_graph_),
-           pq, dists);
+  dijkstra(
+      fwd ? tt.fwd_search_lb_graph_[tt.locations_.footpath_profile(q.prf_idx_)]
+          : tt.bwd_search_lb_graph_[tt.locations_.footpath_profile(q.prf_idx_)],
+      rtt == nullptr ? nullptr
+                     : &(fwd ? rtt->fwd_search_lb_graph_has_edges_
+                             : rtt->bwd_search_lb_graph_has_edges_),
+      rtt == nullptr
+          ? nullptr
+          : &(fwd ? rtt->fwd_search_lb_graph_ : rtt->bwd_search_lb_graph_),
+      pq, dists);
 
   for (auto i = 0U; i != tt.n_locations(); ++i) {
     auto const lb = dists[i];

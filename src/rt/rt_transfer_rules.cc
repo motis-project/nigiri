@@ -65,6 +65,8 @@ using event_cache_t = hash_map<rule_events_key, std::vector<rule_event>>;
 using duration_cache_t =
     hash_map<pair<location_idx_t, location_idx_t>, duration_t>;
 using rt_fps_t = std::map<location_idx_t, std::vector<footpath>>;
+using rt_fp_restrictions_t =
+    std::map<location_idx_t, std::vector<footpath_restriction>>;
 
 std::optional<run_event> get_run_event(rt_timetable const& rtt,
                                        rt::frun const& fr,
@@ -484,6 +486,8 @@ std::pair<location_idx_t, std::vector<run_event>> add_location(
     duration_cache_t& durations,
     rt_fps_t& rt_fps,
     rt_fps_t& rt_fps_in,
+    rt_fp_restrictions_t& rt_fp_restrictions,
+    rt_fp_restrictions_t& rt_fp_restrictions_in,
     location_idx_t const base,
     std::span<changed_event const> stop_events,
     std::span<rule_transfer const> transfers) {
@@ -495,15 +499,35 @@ std::pair<location_idx_t, std::vector<run_event>> add_location(
   for (auto const ev : {event_type::kArr, event_type::kDep}) {
     auto const is_out = ev == event_type::kArr;
     auto fps = hash_map<location_idx_t, duration_t>{};
+    auto alternatives =
+        hash_map<location_idx_t,
+                 std::vector<std::pair<duration_t, footpath_restriction>>>{};
+    auto rule_targets = hash_set<location_idx_t>{};
 
     // Add base transfers.
-    for (auto const fp : routing::get_transfers(
-             tt, nullptr, kDefaultProfile,
-             is_out ? direction::kForward : direction::kBackward, base)) {
-      fps.emplace(fp.target(), fp.duration());
-      rtt.for_each_rt_virt(fp.target(), [&](location_idx_t const l) {
+    auto const add_base = [&](footpath const fp,
+                              footpath_restriction const* r) {
+      auto const add = [&](location_idx_t const l) {
         fps.emplace(l, fp.duration());
-      });
+        if (r != nullptr) {
+          alternatives[l].emplace_back(fp.duration(), *r);
+        }
+      };
+      add(fp.target());
+      rtt.for_each_rt_virt(fp.target(), add);
+    };
+    auto const& loc = tt.locations_;
+    auto const base_fps = (is_out ? loc.footpaths_out_
+                                  : loc.footpaths_in_)[kDefaultProfile][base];
+    auto const split = loc.restricted_begin(kDefaultProfile, is_out, base);
+    for (auto i = 0U; i != base_fps.size(); ++i) {
+      add_base(
+          base_fps[i],
+          i < split
+              ? nullptr
+              : &(is_out ? loc.footpath_restrictions_out_
+                         : loc.footpath_restrictions_in_)[kDefaultProfile][base]
+                                                         [i - split]);
     }
 
     // Overwrite base transfers with more specific rule transfers.
@@ -515,6 +539,7 @@ std::pair<location_idx_t, std::vector<run_event>> add_location(
         auto const expected =
             get_expected(tt, rtt, durations, rt_fps, x, {}, other_base);
         fps[other_base] = expected;
+        rule_targets.insert(other_base);
         for (auto const other : get_virts(tt, rtt, other_base)) {
           if (other != v) {
             auto w = get_window(tt, rtt, x, transfers, other, expected,
@@ -526,6 +551,7 @@ std::pair<location_idx_t, std::vector<run_event>> add_location(
               }
             }
             w.to_ = std::min(w.to_, hull_max + duration_t{1});
+            rule_targets.insert(other);
             fps[other] =
                 pick_duration(w, expected)
                     // it can happen that a conflict requires 2 virts
@@ -554,10 +580,28 @@ std::pair<location_idx_t, std::vector<run_event>> add_location(
     // Store footpaths.
     auto& out = is_out ? rt_fps : rt_fps_in;
     auto& in = is_out ? rt_fps_in : rt_fps;
+    auto& out_r = is_out ? rt_fp_restrictions : rt_fp_restrictions_in;
+    auto& in_r = is_out ? rt_fp_restrictions_in : rt_fp_restrictions;
+    auto const store = [&](location_idx_t const l, duration_t const d,
+                           footpath_restriction const& r) {
+      out[v].emplace_back(l, d);
+      in[l].emplace_back(v, d);
+      out_r[v].push_back(r);
+      in_r[l].push_back(r);
+    };
     for (auto const& [l, d] : fps) {
-      if (d != kNever) {
-        out[v].emplace_back(l, d);
-        in[l].emplace_back(v, d);
+      if (d == kNever) {
+        continue;
+      }
+      auto const it = alternatives.find(l);
+      if (it == end(alternatives)) {
+        store(l, d, footpath_restriction{});
+        continue;
+      }
+      // Station graph alternatives keep their records; a rule sets the
+      // duration of all of them.
+      for (auto const& [alt_d, r] : it->second) {
+        store(l, rule_targets.contains(l) ? d : alt_d, r);
       }
     }
   }
@@ -616,6 +660,8 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
   auto durations = duration_cache_t{};
   auto rt_fps = rt_fps_t{};
   auto rt_fps_in = rt_fps_t{};
+  auto rt_fp_restrictions = rt_fp_restrictions_t{};
+  auto rt_fp_restrictions_in = rt_fp_restrictions_t{};
 
   auto const n_transports = rtt.n_rt_transports();
   auto n_checked = 0U;
@@ -696,8 +742,9 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
     }
 
     // Couldn't join any existing location (base / virt) -> create a new virt.
-    auto const [v, conflicting] = add_location(
-        tt, rtt, durations, rt_fps, rt_fps_in, base, stop_events, transfers);
+    auto const [v, conflicting] =
+        add_location(tt, rtt, durations, rt_fps, rt_fps_in, rt_fp_restrictions,
+                     rt_fp_restrictions_in, base, stop_events, transfers);
     rtt.update_stop_location(rt_t, i, v);
     ++n_moves;
 
@@ -715,12 +762,12 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
 
   // Write all rt footpaths to the rt_timetable.
   auto const write_rt_footpaths =
-      [&](vecvec<location_idx_t, footpath>& fps,
-          std::map<location_idx_t, std::vector<footpath>> const& added) {
+      [&]<typename T>(vecvec<location_idx_t, T>& fps,
+                      std::map<location_idx_t, std::vector<T>> const& added) {
         if (added.empty()) {
           return;
         }
-        auto next = vecvec<location_idx_t, footpath>{};
+        auto next = vecvec<location_idx_t, T>{};
         auto const copy_until = [&](location_idx_t const to) {
           if (fps.data_.empty()) {
             next.resize(to_idx(to));
@@ -742,6 +789,8 @@ void resolve_conflicts(timetable const& tt, rt_timetable& rtt) {
       };
   write_rt_footpaths(rtt.rt_footpaths_out_, rt_fps);
   write_rt_footpaths(rtt.rt_footpaths_in_, rt_fps_in);
+  write_rt_footpaths(rtt.rt_footpath_restrictions_out_, rt_fp_restrictions);
+  write_rt_footpaths(rtt.rt_footpath_restrictions_in_, rt_fp_restrictions_in);
 
   log(log_lvl::info, "rt.resolve_conflicts",
       "{} changed events, {} checked, {} moves, {} unresolved, {} new "

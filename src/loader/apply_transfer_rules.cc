@@ -37,7 +37,8 @@ using stop_seq_t = std::vector<stop::value_type>;
 // specific (as get_more_specific): the most specific rule wins.
 void apply_unqualified_rules(
     timetable const& tt,
-    mutable_fws_multimap<location_idx_t, footpath>& walks) {
+    mutable_fws_multimap<location_idx_t, footpath>& walks,
+    rule_pairs_t& rule_pairs) {
   auto const& rules = tt.transfer_rules_.rules_;
   auto order = std::vector<transfer_rule_idx_t>{};
   for (auto r = transfer_rule_idx_t{0U}; r != rules.size(); ++r) {
@@ -66,6 +67,7 @@ void apply_unqualified_rules(
         if (!rules[r].is_forbidden()) {
           bucket.emplace_back(to, rules[r].duration_);
         }
+        rule_pairs.emplace(from, to);
       });
     });
   }
@@ -262,14 +264,15 @@ void write_rule_locations(timetable& tt) {
   }
 }
 
-void apply_transfer_rules(
-    timetable& tt,
-    import_context& ctx,
-    shapes_storage* shapes,
-    mutable_fws_multimap<location_idx_t, footpath>& walks) {
+void apply_transfer_rules(timetable& tt,
+                          import_context& ctx,
+                          shapes_storage* shapes,
+                          mutable_fws_multimap<location_idx_t, footpath>& walks,
+                          station_footpaths_t const& station_fps) {
   auto qualified_rule_fps = mutable_fws_multimap<location_idx_t, footpath>{};
+  auto rule_pairs = rule_pairs_t{};
   if (!tt.transfer_rules_.rules_.empty()) {
-    apply_unqualified_rules(tt, walks);
+    apply_unqualified_rules(tt, walks, rule_pairs);
     write_trip_has_rule(tt);
 
     auto const timer = scoped_timer{"loader.virtual_locations"};
@@ -291,7 +294,7 @@ void apply_transfer_rules(
     }
     write_rule_locations(tt);
   }
-  write_profiles(tt, walks, qualified_rule_fps);
+  write_profiles(tt, walks, qualified_rule_fps, station_fps, rule_pairs);
 }
 
 }  // namespace nigiri::loader

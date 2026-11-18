@@ -28,6 +28,8 @@ constexpr auto const kLocationGroupStopsFile =
     std::string_view{"location_group_stops.txt"};
 constexpr auto const kLocationsFile = std::string_view{"locations.geojson"};
 constexpr auto const kBookingRulesFile = std::string_view{"booking_rules.txt"};
+constexpr auto const kLevelsFile = std::string_view{"levels.txt"};
+constexpr auto const kPathwaysFile = std::string_view{"pathways.txt"};
 
 // GTFS Fares v2 Files
 

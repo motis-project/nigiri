@@ -27,6 +27,70 @@ std::optional<duration_t> shortest_transfer(timetable const& tt,
   return shortest;
 }
 
+std::optional<std::pair<duration_t, duration_t>> shortest_transfer(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    profile_idx_t const prf_idx,
+    transfer_time_settings const& settings,
+    location_idx_t const from,
+    location_idx_t const to) {
+  auto best = std::optional<std::pair<duration_t, duration_t>>{};
+  auto const update = [&](duration_t const d, duration_t const raw) {
+    if (!best.has_value() || d < best->first) {
+      best = std::pair{d, raw};
+    }
+  };
+  if (from == to) {
+    if (auto const transfer_time = get_transfer_time(tt, rtt, from);
+        transfer_time != kNoTransferAllowed) {
+      auto const raw = duration_t{transfer_time.count()};
+      update(adjusted_transfer_time(settings, raw), raw);
+    }
+  }
+  for_each_transfer<direction::kForward>(
+      tt, rtt, prf_idx, settings, from,
+      [&](footpath const fp, duration_t const d) {
+        if (fp.target() == to) {
+          update(d, fp.duration());
+        }
+      });
+  return best;
+}
+
+std::optional<footpath_restriction> get_footpath_restriction(
+    timetable const& tt,
+    profile_idx_t const prf_idx,
+    transfer_time_settings const& settings,
+    location_idx_t const from,
+    location_idx_t const to,
+    rt_timetable const* rtt) {
+  auto const& loc = tt.locations_;
+  auto const prf = loc.footpath_profile(prf_idx);
+  auto const& fps = loc.footpaths_out_[prf];
+  auto const& records = loc.footpath_restrictions_out_[prf];
+  if (from >= fps.size() || from >= records.size()) {
+    return std::nullopt;
+  }
+  auto const targets = fps[from];
+  auto const r = records[from];
+  auto const split = loc.restricted_begin(prf, true, from);
+  auto const records_start = records.bucket_starts_[to_idx(from)];
+  auto best = std::optional<std::pair<int, footpath_restriction>>{};
+  for (auto i = split; i != targets.size(); ++i) {
+    if (targets[i].target() != to ||
+        (rtt != nullptr &&
+         rtt->is_blocked(prf, true, records_start + (i - split)))) {
+      continue;
+    }
+    auto const d = adjusted_transfer_time(
+        settings, targets[i].duration().count(), r[i - split]);
+    if (d >= 0 && (!best.has_value() || d < best->first)) {
+      best = std::pair{d, r[i - split]};
+    }
+  }
+  return best.transform([](auto const& x) { return x.second; });
+}
+
 std::optional<footpath_duration> get_footpath_duration(
     timetable const& tt,
     rt_timetable const* rtt,
@@ -36,24 +100,27 @@ std::optional<footpath_duration> get_footpath_duration(
     unixtime_t const t,
     location_idx_t const from,
     location_idx_t const to) {
-  if (from != to && is_td_source(rtt, prf_idx, from)) {
+  auto const td_prf = tt.locations_.footpath_profile(prf_idx);
+  if (from != to && is_td_source(rtt, td_prf, from)) {
     auto best = std::optional<footpath_duration>{};
     for_each_footpath(
-        dir, rtt->td_footpaths_out_[prf_idx][from], t,
-        [&](location_idx_t const target, duration_t const d,
-            duration_t const w) {
-          if (target == to && (!best.has_value() || d < best->duration_)) {
+        dir, rtt->td_footpaths_out_[td_prf][from], t,
+        [&](location_idx_t const target, duration_t const d, duration_t const w,
+            footpath_restriction const& r) {
+          if (target != to || !is_usable(r, settings.restrictions_)) {
+            return;
+          }
+          if (!best.has_value() || d < best->duration_) {
             best = footpath_duration{d, w, w};
           }
         });
     return best;
   }
-  auto const raw = shortest_transfer(tt, rtt, prf_idx, from, to);
-  if (!raw.has_value()) {
+  auto const shortest = shortest_transfer(tt, rtt, prf_idx, settings, from, to);
+  if (!shortest.has_value()) {
     return std::nullopt;
   }
-  auto const d = adjusted_transfer_time(settings, *raw);
-  return footpath_duration{d, d, *raw};
+  return footpath_duration{shortest->first, shortest->first, shortest->second};
 }
 
 std::optional<journey::leg> get_offset_leg(timetable const& tt,

@@ -645,6 +645,38 @@ struct raptor_impl {
     return static_cast<int>(tt_.transfer_time_[s].count());
   }
 
+  // Entry j of l's footpath list [unrestricted | restricted]: the restricted
+  // tail is checked against its record and real-time elevator blocks.
+  template <typename Fps>
+  __device__ __forceinline__ void relax_any_footpath(unsigned const k,
+                                                     location_idx_t const l,
+                                                     Fps const& fps,
+                                                     unsigned const n_fps,
+                                                     unsigned const j,
+                                                     delta_t const tmp_time,
+                                                     breadcrumb_t const bc,
+                                                     delta_t const t_at_dest) {
+    auto const& records = kFwd ? tt_.footpath_restrictions_out_[prf_idx_]
+                               : tt_.footpath_restrictions_in_[prf_idx_];
+    auto const n_records = to_idx(l) < records.size() ? records[l].size() : 0U;
+    auto const split = n_fps - static_cast<unsigned>(n_records);
+    if (j < split) {
+      relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+      return;
+    }
+    auto const record_idx = static_cast<std::uint32_t>(
+        records.bucket_starts_[to_idx(l)] + (j - split));
+    if (rtt_.is_blocked(kFwd, record_idx)) {
+      return;
+    }
+    auto const d = adjusted_transfer_time(transfer_time_settings_,
+                                          fps[j].duration().count(),
+                                          records[l][j - split]);
+    if (d >= 0) {
+      relax_fp_target(k, fps[j].target(), d, tmp_time, bc, t_at_dest);
+    }
+  }
+
   __device__ __forceinline__ void relax_fp_target(unsigned const k,
                                                   location_idx_t const target_l,
                                                   int const duration,
@@ -811,7 +843,11 @@ struct raptor_impl {
                                        : rtt_.td_->in_[prf_idx_][l];
               d_for_each_td_footpath<SearchDir>(
                   td_fps, to_unix(tmp_time),
-                  [&](location_idx_t const target, duration_t const d) {
+                  [&](location_idx_t const target, duration_t const d,
+                      duration_t, footpath_restriction const& r) {
+                    if (!is_usable(r, transfer_time_settings_.restrictions_)) {
+                      return;
+                    }
                     relax_fp_target(k, target, static_cast<int>(d.count()),
                                     tmp_time, bc, t_at_dest);
                   });
@@ -828,7 +864,8 @@ struct raptor_impl {
                     has_td_fps<WithTdFootpaths>(fps[j].target(), true)) {
                   continue;
                 }
-                relax_footpath(k, fps[j], tmp_time, bc, t_at_dest);
+                relax_any_footpath(k, l, fps, n_fps, j, tmp_time, bc,
+                                   t_at_dest);
               }
             } else {
               defer = true;
@@ -856,7 +893,7 @@ struct raptor_impl {
               has_td_fps<WithTdFootpaths>(fps[j].target(), true)) {
             continue;
           }
-          relax_footpath(k, fps[j], l_tmp, l_bc, t_at_dest);
+          relax_any_footpath(k, l, fps, l_n, j, l_tmp, l_bc, t_at_dest);
         }
       });
     }
@@ -875,11 +912,13 @@ struct raptor_impl {
         continue;
       }
 
-      relax_fp_target(k, kFwd ? e.fp_.target() : e.from_,
-                      adjusted_transfer_time(transfer_time_settings_,
-                                             e.fp_.duration().count()),
-                      tmp_time, tmp_.get_bc(0U, src, Vias),
-                      time_at_dest_.get(k));
+      auto const d = adjusted_transfer_time(
+          transfer_time_settings_, e.fp_.duration().count(), e.restriction_);
+      if (d < 0) {
+        continue;
+      }
+      relax_fp_target(k, kFwd ? e.fp_.target() : e.from_, d, tmp_time,
+                      tmp_.get_bc(0U, src, Vias), time_at_dest_.get(k));
     }
   }
 

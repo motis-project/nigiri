@@ -7,12 +7,16 @@
 
 #include "geo/latlng.h"
 
+#include "utl/erase_if.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
 
 #include "nigiri/loader/apply_transfer_rules.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
+#include "nigiri/loader/station_footpaths.h"
+#include "nigiri/loader/station_graph.h"
 #include "nigiri/common/dial.h"
 #include "nigiri/constants.h"
 #include "nigiri/logging.h"
@@ -121,6 +125,70 @@ void add_transitive_walks(timetable const& tt,
   }
 }
 
+void replace_station_walks(
+    vector_map<location_idx_t, std::vector<station_footpath>> const&
+        station_fps,
+    mutable_fws_multimap<location_idx_t, footpath>& walks) {
+  for (auto l = location_idx_t{0U}; l != station_fps.size(); ++l) {
+    auto const& s = station_fps[l];
+    if (s.empty()) {
+      continue;
+    }
+    auto bucket = walks[l];
+    utl::erase_if(bucket, [&](footpath const fp) {
+      return utl::any_of(s, [&](station_footpath const& x) {
+        return x.target_ == fp.target();
+      });
+    });
+    for (auto i = 0U; i != s.size(); ++i) {
+      if (i == 0U || s[i].target_ != s[i - 1U].target_) {
+        bucket.push_back(footpath{s[i].target_, s[i].duration_});
+      }
+    }
+  }
+}
+
+// Routed footpaths with restriction records join the station graph
+// footpaths of their profile, except for pairs that a station graph covers.
+void merge_routed_footpaths(timetable const& tt,
+                            station_footpaths_t& routed,
+                            station_footpaths_t& station_fps) {
+  auto const& coverage = station_fps[kDefaultProfile];
+  auto const is_covered = [&](location_idx_t const from,
+                              location_idx_t const to) {
+    return from < coverage.size() &&
+           utl::any_of(
+               coverage[from],
+               [&](station_footpath const& fp) { return fp.target_ == to; });
+  };
+  auto n_merged = 0U;
+  for (auto prf = profile_idx_t{1U}; prf != kNProfiles; ++prf) {
+    auto& from_routing = routed[prf];
+    if (from_routing.empty()) {
+      continue;
+    }
+    auto& fps = station_fps[prf];
+    fps.resize(tt.n_locations());
+    for (auto l = location_idx_t{0U}; l != from_routing.size(); ++l) {
+      if (from_routing[l].empty()) {
+        continue;
+      }
+      for (auto const& fp : from_routing[l]) {
+        if (!is_covered(l, fp.target_)) {
+          fps[l].push_back(fp);
+          ++n_merged;
+        }
+      }
+      remove_dominated(fps[l]);
+      from_routing[l] = {};
+    }
+  }
+  if (n_merged != 0U) {
+    log(log_lvl::info, "loader.footpaths", "{} routed restricted footpaths",
+        n_merged);
+  }
+}
+
 void build_footpaths(timetable& tt,
                      import_context& ctx,
                      finalize_options const& opt,
@@ -140,9 +208,22 @@ void build_footpaths(timetable& tt,
                      opt.src_tags_);
   }
 
+  auto routed_restricted = station_footpaths_t{};
   if (opt.compute_walks_) {
-    opt.compute_walks_(tt, walks);
+    opt.compute_walks_(tt, walks, routed_restricted);
   }
+
+  // Station graphs: the fastest route replaces all other walks between two
+  // of their stops, the alternatives become restricted footpaths.
+  resolve_refs(tt, ctx.station_graph_);
+  auto const station_routes = get_station_routes(ctx.station_graph_);
+  if (opt.station_paths_ != nullptr) {
+    write_station_paths(ctx.station_graph_, station_routes,
+                        *opt.station_paths_);
+  }
+  auto station_fps = get_station_footpaths(tt, station_routes);
+  replace_station_walks(station_fps[kDefaultProfile], walks);
+  merge_routed_footpaths(tt, routed_restricted, station_fps);
 
   // Then transfer times.
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
@@ -155,7 +236,7 @@ void build_footpaths(timetable& tt,
   }
 
   // Then transfer rules.
-  apply_transfer_rules(tt, ctx, shapes, walks);
+  apply_transfer_rules(tt, ctx, shapes, walks, station_fps);
 }
 
 }  // namespace nigiri::loader

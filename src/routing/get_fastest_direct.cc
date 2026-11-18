@@ -6,6 +6,7 @@
 #include "nigiri/common/dial.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/dijkstra.h"
+#include "nigiri/routing/transfers.h"
 #include "nigiri/special_stations.h"
 
 namespace nigiri::routing {
@@ -68,29 +69,25 @@ duration_t get_fastest_direct(timetable const& tt,
       continue;
     }
 
-    auto const& footpaths =
-        (dir == direction::kForward ? tt.locations_.footpaths_out_[q.prf_idx_]
-                                    : tt.locations_.footpaths_in_[q.prf_idx_]);
-    for (auto const& fp : footpaths[l.l_]) {
-      auto const new_dist =
-          l.d_ + adjusted_transfer_time(
-                     q.transfer_time_settings_,
-                     static_cast<label::dist_t>(fp.duration().count()));
-      if (new_dist > max_dist) {
-        continue;
-      }
+    for_each_transfer(
+        tt, nullptr, q.prf_idx_, q.transfer_time_settings_, dir, l.l_,
+        [&](footpath const fp, duration_t const d) {
+          auto const new_dist = l.d_ + static_cast<label::dist_t>(d.count());
+          if (new_dist > max_dist) {
+            return;
+          }
 
-      if (!dest_offsets.contains(fp.target())) {
-        continue;
-      }
+          if (!dest_offsets.contains(fp.target())) {
+            return;
+          }
 
-      auto& target_dist = get_dist(fp.target());
-      if (new_dist < target_dist && new_dist < pq.n_buckets() &&
-          new_dist < max_dist) {
-        target_dist = static_cast<label::dist_t>(new_dist);
-        pq.push(label{fp.target(), static_cast<label::dist_t>(new_dist)});
-      }
-    }
+          auto& target_dist = get_dist(fp.target());
+          if (new_dist < target_dist && new_dist < pq.n_buckets() &&
+              new_dist < max_dist) {
+            target_dist = static_cast<label::dist_t>(new_dist);
+            pq.push(label{fp.target(), static_cast<label::dist_t>(new_dist)});
+          }
+        });
 
     if (auto const d = utl::lookup(dest_offsets, l.l_)) {
       auto const new_dist = l.d_ + static_cast<label::dist_t>(*d);

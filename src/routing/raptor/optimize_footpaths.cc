@@ -105,8 +105,12 @@ void optimize_initial_start_footpath(timetable const& tt,
   auto fp_dur_best = adjusted_transfer_time(
       q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
 
-  auto const footpaths =
-      get_transfers<direction::kForward>(tt, rtt, q.prf_idx_, start_loc);
+  auto footpaths = std::vector<std::pair<footpath, duration_t>>{};
+  for_each_transfer<direction::kForward>(
+      tt, rtt, q.prf_idx_, q.transfer_time_settings_, start_loc,
+      [&](footpath const fp, duration_t const d) {
+        footpaths.emplace_back(fp, d);
+      });
 
   auto r = rt::run{ree.r_};
   r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
@@ -122,12 +126,10 @@ void optimize_initial_start_footpath(timetable const& tt,
     }
 
     auto const l = search_location(q.prf_idx_, stp);
-    for (auto const& fp : footpaths) {
+    for (auto const& [fp, fp_dur] : footpaths) {
       if (fp.target() != l) {
         continue;
       }
-      auto const fp_dur =
-          adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
       if (fp_dur < fp_dur_best) {
         auto const dep = stp.time(event_type::kDep);
         auto const fp_start = dep - fp_dur;
@@ -223,16 +225,21 @@ void optimize_final_egress_footpath(timetable const& tt,
   auto const dest_loc =
       exact_location(q.dest_match_mode_, q.destination_, fp_leg.to_);
 
-  if (rtt != nullptr && has_profile_td_footpaths(q.prf_idx_) &&
-      rtt->has_td_footpaths_in_[q.prf_idx_].test(dest_loc)) {
+  auto const td_prf = tt.locations_.footpath_profile(q.prf_idx_);
+  if (rtt != nullptr && has_profile_td_footpaths(td_prf) &&
+      rtt->has_td_footpaths_in_[td_prf].test(dest_loc)) {
     return;  // TODO(felix) handle shortening of td-footpaths
   }
 
   auto fp_dur_best = adjusted_transfer_time(
       q.transfer_time_settings_, get<footpath>(fp_leg.uses_).duration());
 
-  auto const footpaths =
-      get_transfers<direction::kBackward>(tt, rtt, q.prf_idx_, dest_loc);
+  auto footpaths = std::vector<std::pair<footpath, duration_t>>{};
+  for_each_transfer<direction::kBackward>(
+      tt, rtt, q.prf_idx_, q.transfer_time_settings_, dest_loc,
+      [&](footpath const fp, duration_t const d) {
+        footpaths.emplace_back(fp, d);
+      });
 
   auto fr = rt::frun{tt, rtt, ree.r_};
   auto range_from = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
@@ -257,12 +264,10 @@ void optimize_final_egress_footpath(timetable const& tt,
       continue;
     }
     auto const l = search_location(q.prf_idx_, stp);
-    for (auto const& fp : footpaths) {
+    for (auto const& [fp, fp_dur] : footpaths) {
       if (fp.target() != l) {
         continue;
       }
-      auto const fp_dur =
-          adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
       if (fp_dur < fp_dur_best) {
         auto const arr = stp.time(event_type::kArr);
         auto const fp_end = arr + fp_dur;
@@ -446,16 +451,16 @@ void optimize_transfers(timetable const& tt,
           continue;
         }
 
-        auto const shortest = shortest_transfer(
-            tt, rtt, q.prf_idx_, search_location(q.prf_idx_, stp_from),
-            search_location(q.prf_idx_, stp_to));
+        auto const shortest =
+            shortest_transfer(tt, rtt, q.prf_idx_, q.transfer_time_settings_,
+                              search_location(q.prf_idx_, stp_from),
+                              search_location(q.prf_idx_, stp_to));
         if (!shortest.has_value()) {
           continue;
         }
 
-        auto const fp = footpath{stp_to.get_location_idx(), *shortest};
-        auto const fp_dur =
-            adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
+        auto const fp = footpath{stp_to.get_location_idx(), shortest->second};
+        auto const fp_dur = shortest->first;
         auto const arr = stp_from.time(event_type::kArr);
         auto const dep = stp_to.time(event_type::kDep);
         auto const arr_fp = arr + fp_dur;

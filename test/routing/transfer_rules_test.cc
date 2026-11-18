@@ -183,15 +183,17 @@ TEST(transfer_rules, td_footpaths_reach_virtual_locations) {
   auto const qb = lidx(tt, "QB");
   ASSERT_LT(1U, members(qs).size()) << "precondition";
 
+  auto const elevator =
+      footpath_restriction{.flags_ = footpath_restriction::kElevator};
   auto fps = std::map<location_idx_t, std::vector<td_footpath>>{
-      {qs, {{qb, kNull, 5_minutes}}}};
+      {qs, {{qb, kNull, 5_minutes, elevator}}}};
   expand_td_footpaths_to_virts(tt, fps);
 
   EXPECT_EQ(members(qs).size(), fps.size());
   for (auto const from : members(qs)) {
     auto expected = std::vector<td_footpath>{};
     for (auto const to : members(qb)) {
-      expected.push_back({to, kNull, 5_minutes});
+      expected.push_back({to, kNull, 5_minutes, elevator});
     }
     for (auto const to : members(qs)) {
       if (to != from) {

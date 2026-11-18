@@ -17,6 +17,7 @@
 #include "nigiri/event_times.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
+#include "nigiri/footpath_restriction.h"
 #include "nigiri/stop.h"
 #include "nigiri/string_store.h"
 #include "nigiri/td_footpath.h"
@@ -140,6 +141,38 @@ struct timetable {
     sparse_vecvec<location_idx_t, location_idx_t> children_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
+
+    // Footpath lists: [unrestricted | restricted]. Restricted entries (one
+    // per Pareto-optimal route of a station graph or the street network)
+    // carry a restriction record: bucket l holds the records of the last
+    // entries of l's list (bucket starts = restricted base). Empty: no
+    // restricted entries in this profile.
+    array<vecvec<location_idx_t, footpath_restriction>, kNProfiles>
+        footpath_restrictions_out_;
+    array<vecvec<location_idx_t, footpath_restriction>, kNProfiles>
+        footpath_restrictions_in_;
+
+    // Footpath lists of a query profile: without own lists, the wheelchair
+    // profile uses the foot lists (durations and restrictions per query).
+    profile_idx_t footpath_profile(profile_idx_t const p) const {
+      return p == kWheelchairProfile && footpaths_out_[p].empty() &&
+                     !footpaths_out_[kFootProfile].empty()
+                 ? kFootProfile
+                 : p;
+    }
+
+    // Index of the first restricted entry in l's footpath list.
+    std::uint32_t restricted_begin(profile_idx_t const p,
+                                   bool const is_out,
+                                   location_idx_t const l) const {
+      auto const& fps = (is_out ? footpaths_out_ : footpaths_in_)[p];
+      auto const& records =
+          (is_out ? footpath_restrictions_out_ : footpath_restrictions_in_)[p];
+      auto const n = static_cast<std::uint32_t>(fps[l].size());
+      return l < records.size()
+                 ? n - static_cast<std::uint32_t>(records[l].size())
+                 : n;
+    }
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
