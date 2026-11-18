@@ -8,12 +8,6 @@ get_filename_component(_nigiri_zstd_root "../../../../deps/zstd" ABSOLUTE
 set(zstd_VERSION 1.5.7)
 set(zstd_FOUND ON)
 
-set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "Build zstd programs" FORCE)
-set(ZSTD_BUILD_TESTS OFF CACHE BOOL "Build zstd tests" FORCE)
-
-add_subdirectory(${_nigiri_zstd_root}/build/cmake
-      ${CMAKE_BINARY_DIR}/deps/zstd EXCLUDE_FROM_ALL)
-
 # zstd only defines these aliases inside its export sets, so create the ones
 # minizip-ng links against (BUILD_SHARED_LIBS is OFF here) in this scope,
 # where minizip-ng's targets are defined.

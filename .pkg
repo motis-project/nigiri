@@ -65,4 +65,4 @@
 [zstd]
   url=git@github.com:facebook/zstd.git
   branch=dev
-  commit=f8745da6ff1ad1e7bab384bd1f9d742439278e99
+  commit=c9d3af9ed0fa28b674270616c17e732e2ffcd8eb
