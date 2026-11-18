@@ -2,6 +2,10 @@
 
 #include <algorithm>
 #include <optional>
+#include <utility>
+#include <vector>
+
+#include "geo/latlng.h"
 
 #include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
@@ -352,6 +356,15 @@ double get_penalty(timetable const& tt,
   return weight;
 }
 
+bool is_same_place(timetable const& tt,
+                   location_idx_t const a,
+                   location_idx_t const b) {
+  constexpr auto kMaxDistance = 200.0;  // [m]
+  return matches(tt, nullptr, location_match_mode::kEquivalent, a, b) ||
+         geo::distance(tt.locations_.coordinates_[a],
+                       tt.locations_.coordinates_[b]) <= kMaxDistance;
+}
+
 void optimize_transfers(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
@@ -426,22 +439,20 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
-    auto penalty_best = get_penalty(
-        tt,
-        adjusted_transfer_time(q.transfer_time_settings_,
-                               get<footpath>(leg_footpath.uses_).duration()),
-        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.to_, leg_to.from_,
-        trip_at(rt::frun{tt, rtt, ree_from.r_}[static_cast<stop_idx_t>(
-                    ree_from.stop_range_.to_ - 1U)],
-                event_type::kArr),
-        trip_at(rt::frun{tt, rtt, ree_to.r_}[ree_to.stop_range_.from_],
-                event_type::kDep));
-    for (auto stp_from : fr_from) {
+    struct transfer_candidate {
+      rt::run_stop from_, to_;
+      footpath fp_;
+      unixtime_t arr_fp_;
+      double penalty_;
+      bool same_place_;
+    };
+    auto candidates = std::vector<transfer_candidate>{};
+    for (auto const stp_from : fr_from) {
       if (!stp_from.out_allowed()) {
         continue;
       }
       auto const from_trip = trip_at(stp_from, event_type::kArr);
-      for (auto stp_to : fr_to) {
+      for (auto const stp_to : fr_to) {
         if (!stp_to.in_allowed()) {
           continue;
         }
@@ -456,35 +467,68 @@ void optimize_transfers(timetable const& tt,
         auto const fp = footpath{stp_to.get_location_idx(), *shortest};
         auto const fp_dur =
             adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
-        auto const arr = stp_from.time(event_type::kArr);
+        auto const arr_fp = stp_from.time(event_type::kArr) + fp_dur;
         auto const dep = stp_to.time(event_type::kDep);
-        auto const arr_fp = arr + fp_dur;
         if (arr_fp > dep) {
           continue;
         }
         auto const to_trip = trip_at(stp_to, event_type::kDep);
-        auto const penalty =
-            get_penalty(tt, fp_dur, dep - arr_fp, stp_from.get_location_idx(),
-                        stp_to.get_location_idx(), from_trip, to_trip);
-        if (penalty < penalty_best) {
-          leg_from.to_ = stp_from.get_location_idx();
-          leg_from.arr_time_ = arr;
-          ree_from.stop_range_.to_ =
-              stp_from.stop_idx_ + 1U;  // half open interval
-
-          leg_to.from_ = stp_to.get_location_idx();
-          leg_to.dep_time_ = dep;
-          ree_to.stop_range_.from_ = stp_to.stop_idx_;
-
-          leg_footpath.from_ = stp_from.get_location_idx();
-          leg_footpath.to_ = stp_to.get_location_idx();
-          leg_footpath.dep_time_ = arr;
-          leg_footpath.arr_time_ = arr_fp;
-          leg_footpath.uses_ = fp;
-
-          penalty_best = penalty;
-        }
+        candidates.push_back(
+            {stp_from, stp_to, fp, arr_fp,
+             get_penalty(tt, fp_dur, dep - arr_fp, stp_from.get_location_idx(),
+                         stp_to.get_location_idx(), from_trip, to_trip),
+             is_same_place(tt, stp_from.get_location_idx(),
+                           stp_to.get_location_idx())});
       }
+    }
+
+    // Riding past a place to change there on the way back visits it twice.
+    auto const is_double_visit = [&](stop_idx_t const from,
+                                     stop_idx_t const to) {
+      return utl::any_of(candidates, [&](transfer_candidate const& c) {
+        return c.same_place_ && c.from_.stop_idx_ < from &&
+               c.to_.stop_idx_ > to;
+      });
+    };
+
+    auto best = std::pair{
+        is_double_visit(static_cast<stop_idx_t>(ree_from.stop_range_.to_ - 1U),
+                        ree_to.stop_range_.from_),
+        get_penalty(
+            tt,
+            adjusted_transfer_time(
+                q.transfer_time_settings_,
+                get<footpath>(leg_footpath.uses_).duration()),
+            leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.to_,
+            leg_to.from_,
+            trip_at(rt::frun{tt, rtt, ree_from.r_}[static_cast<stop_idx_t>(
+                        ree_from.stop_range_.to_ - 1U)],
+                    event_type::kArr),
+            trip_at(rt::frun{tt, rtt, ree_to.r_}[ree_to.stop_range_.from_],
+                    event_type::kDep))};
+    for (auto const& c : candidates) {
+      auto const x = std::pair{
+          is_double_visit(c.from_.stop_idx_, c.to_.stop_idx_), c.penalty_};
+      if (x >= best) {
+        continue;
+      }
+
+      auto const arr = c.from_.time(event_type::kArr);
+      leg_from.to_ = c.from_.get_location_idx();
+      leg_from.arr_time_ = arr;
+      ree_from.stop_range_.to_ = c.from_.stop_idx_ + 1U;  // half open interval
+
+      leg_to.from_ = c.to_.get_location_idx();
+      leg_to.dep_time_ = c.to_.time(event_type::kDep);
+      ree_to.stop_range_.from_ = c.to_.stop_idx_;
+
+      leg_footpath.from_ = c.from_.get_location_idx();
+      leg_footpath.to_ = c.to_.get_location_idx();
+      leg_footpath.dep_time_ = arr;
+      leg_footpath.arr_time_ = c.arr_fp_;
+      leg_footpath.uses_ = c.fp_;
+
+      best = x;
     }
   }
 }
