@@ -118,6 +118,7 @@ struct mc_crits {
 void expect_legs_match_criteria(timetable const& tt,
                                 rt_timetable const* rtt,
                                 pareto_set<routing::journey> const& js,
+                                routing::clasz_mask_t const avoided_claszes,
                                 mc_crits const c,
                                 std::string_view const config) {
   using namespace routing;
@@ -170,8 +171,7 @@ void expect_legs_match_criteria(timetable const& tt,
                         ? rtt->rt_transport_section_clasz_[ree.r_.rt_][0]
                         : tt.route_clasz_
                               [tt.transport_route_[ree.r_.t_.t_idx_]];
-                avoided =
-                    avoided || is_allowed(mode_filter_dim::avoided_mask(), cl);
+                avoided = avoided || is_allowed(avoided_claszes, cl);
                 auto const g = mode_group(cl);
                 switches = std::min(
                     switches + (group != kNoModeGroup && group != g ? 1U : 0U),
@@ -206,7 +206,7 @@ pareto_set<routing::journey> expect_superset(timetable const& tt,
                                              mc_crits const crits,
                                              std::string_view const config) {
   auto mc = run_search<State>(tt, rtt, q, search_dir);
-  expect_legs_match_criteria(tt, rtt, mc, crits, config);
+  expect_legs_match_criteria(tt, rtt, mc, q.avoided_claszes_, crits, config);
   auto const mc_tuples = journey_tuples(mc);
   for (auto const& t : base) {
     EXPECT_TRUE(std::binary_search(begin(mc_tuples), end(mc_tuples), t))
@@ -230,7 +230,7 @@ void expect_gpu_equal(timetable const& tt,
   auto const gpu = run_search<GpuState>(tt, rtt, q, search_dir, gpu_tt);
   EXPECT_EQ(criteria_tuples(cpu), criteria_tuples(gpu))
       << "gpu mcraptor (" << config << ")";
-  expect_legs_match_criteria(tt, rtt, gpu, crits,
+  expect_legs_match_criteria(tt, rtt, gpu, q.avoided_claszes_, crits,
                              fmt::format("gpu {}", config));
 }
 #endif
@@ -283,7 +283,8 @@ static range_result search_range(timetable const& tt,
     } else {
       EXPECT_EQ(base_tuples, journey_tuples(mc_plain)) << "mcraptor";
     }
-    expect_legs_match_criteria(tt, rtt, mc_plain, {}, "mcraptor");
+    expect_legs_match_criteria(tt, rtt, mc_plain, q.avoided_claszes_, {},
+                               "mcraptor");
 
     using namespace routing;
     auto const& b = base_tuples;
@@ -337,7 +338,8 @@ static range_result search_range(timetable const& tt,
       auto const gpu_plain = run_search<routing::gpu::gpu_mcraptor_state>(
           tt, rtt, q, search_dir, gpu_timetable);
       EXPECT_EQ(base_tuples, journey_tuples(gpu_plain)) << "gpu mcraptor";
-      expect_legs_match_criteria(tt, rtt, gpu_plain, {}, "gpu mcraptor");
+      expect_legs_match_criteria(tt, rtt, gpu_plain, q.avoided_claszes_, {},
+                                 "gpu mcraptor");
       using namespace routing::gpu;
       auto const& g = gpu_timetable;
       expect_gpu_equal<gpu_mcraptor_non_transit_state>(

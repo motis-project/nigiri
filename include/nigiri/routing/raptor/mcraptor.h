@@ -298,7 +298,8 @@ struct basic_mcraptor {
       bool is_wheelchair,
       bool no_compulsory_reservation,
       transfer_time_settings const&,
-      profile_idx_t prf_idx);
+      profile_idx_t prf_idx,
+      mc_context const& = {});
 
   algo_stats_t get_stats() const { return stats_; }
 

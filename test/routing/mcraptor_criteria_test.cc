@@ -304,6 +304,7 @@ struct scenario {
       q.flip_dir();
     }
     q.start_time_ = dir == direction::kForward ? deps_ : arrs_;
+    q.avoided_claszes_ = avoided_;
     return q;
   }
 
@@ -311,6 +312,7 @@ struct scenario {
   td_offsets_t td_from_{}, td_to_{};
   interval<unixtime_t> deps_{}, arrs_{};
   bool intermodal_{false};
+  clasz_mask_t avoided_{to_mask(clasz::kAir)};
 };
 
 // `duration` from `from` on, until the next entry. valid_from is when the walk
@@ -393,11 +395,11 @@ TEST(mcraptor_criteria, mode_filter_keeps_best_without_avoided_class) {
 // air 10:30, coach 10:50, rail 11:30: each mask motis offers (minimizeWithout:
 // AIR, COACH, both), on the CPU and, through expect_engines, the GPU
 TEST(mcraptor_criteria, mode_filter_avoids_each_mask) {
-  auto const s =
-      between("M0", "M9", {at(9, 30), at(10, 30)}, {at(10, 15), at(11, 45)});
   auto const check = [&](clasz_mask_t const avoided,
                          std::vector<std::string> const& expected) {
-    mode_filter_dim::set_avoided(avoided);
+    auto s =
+        between("M0", "M9", {at(9, 30), at(10, 30)}, {at(10, 15), at(11, 45)});
+    s.avoided_ = avoided;
     expect_engines(s, {"10:00 10:30 t0 c0 f0 s0"});
     expect_rows<mcraptor_mode_filter_state>(s, expected);
     expect_rows<mcraptor_non_transit_mode_filter_mode_switches_state>(s,
@@ -408,7 +410,6 @@ TEST(mcraptor_criteria, mode_filter_avoids_each_mask) {
   check(to_mask(clasz::kCoach), {"10:00 10:30 t0 c0 f0 s0"});
   check(to_mask(clasz::kAir) | to_mask(clasz::kCoach),
         {"10:00 10:30 t0 c0 f1 s0", "10:00 11:30 t0 c0 f0 s0"});
-  mode_filter_dim::set_avoided(to_mask(clasz::kAir));  // the default
 }
 
 // A ride has its route's class (route_clasz_, as raptor's clasz filter), also

@@ -91,7 +91,8 @@ struct gpu_mcraptor {
       bool is_wheelchair,
       bool no_compulsory_reservation,
       transfer_time_settings const& tts,
-      profile_idx_t prf_idx);
+      profile_idx_t prf_idx,
+      mc_context const& = {});
 
   raptor_stats get_stats() const { return stats_; }
 
@@ -126,7 +127,7 @@ private:
   day_idx_t base_;
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
-  mc_context ctx_;  // mode_filter_dim::avoided_mask() at construction
+  mc_context ctx_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
   profile_idx_t prf_idx_;

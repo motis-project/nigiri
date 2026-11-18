@@ -9,6 +9,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/mc_context.h"
 #include "nigiri/types.h"
 
 // McRAPTOR's criteria besides the arrival and its breadcrumbs, shared by the
@@ -28,11 +29,6 @@
 // A new criterion also needs its fields here, aliases (raptor/mcraptor.h,
 // gpu/mcraptor.h) and instantiations (raptor/mcraptor.cc, gpu/mcraptor.cu).
 namespace nigiri::routing {
-
-// what the updates need per query
-struct mc_context {
-  clasz_mask_t avoided_{to_mask(clasz::kAir)};  // mode_filter_dim
-};
 
 // Every criterion's fields. A configuration's criteria set theirs, the others
 // stay 0. No padding: the engines store and compare the 16 bits as an integer.
@@ -109,17 +105,10 @@ struct non_transit_dim : mc_dim {
 };
 
 // ---- mode_filter ------------------------------------------------------------
-// "Uses an avoided vehicle class" as a Pareto dimension, not a filter.
+// "Uses an avoided vehicle class" (query::avoided_claszes_) as a Pareto
+// dimension, not a filter.
 struct mode_filter_dim : mc_dim {
   static constexpr bool kRide = true;
-
-  // set per query (default AIR) on the thread that runs the search; the
-  // engines copy it into their mc_context
-  static clasz_mask_t& avoided_mask() {
-    thread_local clasz_mask_t mask = to_mask(clasz::kAir);
-    return mask;
-  }
-  static void set_avoided(clasz_mask_t const m) { avoided_mask() = m; }
 
   CISTA_CUDA_COMPAT static void after_ride(mc_fields& f,
                                            clasz const c,

@@ -423,7 +423,8 @@ gpu_mcraptor<SearchDir, Criteria>::gpu_mcraptor(
     bool const is_wheelchair,
     bool const no_compulsory_reservation,
     transfer_time_settings const& tts,
-    profile_idx_t const prf_idx)
+    profile_idx_t const prf_idx,
+    mc_context const& ctx)
     : tt_{tt},
       rtt_{rtt},
       gpu_rtt_{rtt == nullptr ? nullptr
@@ -433,7 +434,7 @@ gpu_mcraptor<SearchDir, Criteria>::gpu_mcraptor(
       is_dest_{is_dest},
       base_{base},
       allowed_claszes_{allowed_claszes},
-      ctx_{.avoided_ = mode_filter_dim::avoided_mask()},
+      ctx_{ctx},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
       prf_idx_{prf_idx},

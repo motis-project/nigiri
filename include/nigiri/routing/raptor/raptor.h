@@ -10,6 +10,7 @@
 #include "nigiri/location_routes.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/mc_context.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
@@ -85,7 +86,8 @@ struct raptor {
       bool const is_wheelchair,
       bool const no_compulsory_reservation,
       transfer_time_settings const& tts,
-      profile_idx_t const prf_idx)
+      profile_idx_t const prf_idx,
+      mc_context const& = {})
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},

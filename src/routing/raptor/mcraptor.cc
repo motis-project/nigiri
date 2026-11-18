@@ -41,7 +41,8 @@ basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
     bool const is_wheelchair,
     bool const no_compulsory_reservation,
     transfer_time_settings const& tts,
-    profile_idx_t const prf_idx)
+    profile_idx_t const prf_idx,
+    mc_context const& ctx)
     : tt_{tt},
       rtt_{rtt},
       state_{
@@ -54,7 +55,7 @@ basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
       lb_{lb},
       base_{base},
       allowed_claszes_{allowed_claszes},
-      ctx_{.avoided_ = mode_filter_dim::avoided_mask()},
+      ctx_{ctx},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
       prf_idx_{prf_idx} {

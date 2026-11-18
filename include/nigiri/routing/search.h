@@ -16,6 +16,7 @@
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/mc_context.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/debug.h"
@@ -146,7 +147,8 @@ struct search {
         q_.prf_idx_ == 2U,
         no_compulsory_reservation,
         q_.transfer_time_settings_,
-        q_.prf_idx_};
+        q_.prf_idx_,
+        mc_context{.avoided_ = q_.avoided_claszes_}};
   }
 
   search(timetable const& tt,
