@@ -129,7 +129,7 @@ std::uint64_t compare_results(
                       j.transfers_,
                       j.dest_time_,
                       tuple_only ? 0U : j.criteria_cost_,
-                      !tuple_only && j.criteria_mode_filter_,
+                      !tuple_only && j.criteria_avoided_modes_,
                       tuple_only ? 0U : j.criteria_mode_switches_};
   };
 
@@ -139,9 +139,9 @@ std::uint64_t compare_results(
 
   auto const key = [](journey const& j) {
     return fmt::format(
-        "dep={} arr={} transfers={} cost={} mode_filter={} mode_switches={}",
+        "dep={} arr={} transfers={} cost={} avoided_modes={} mode_switches={}",
         j.departure_time(), j.arrival_time(), j.transfers_, j.criteria_cost_,
-        j.criteria_mode_filter_, j.criteria_mode_switches_);
+        j.criteria_avoided_modes_, j.criteria_mode_switches_);
   };
 
   // labels end in the engine, so this compares everything but the engine
@@ -420,7 +420,7 @@ int main(int argc, char* argv[]) {
        "process exits non-zero on any divergence")  //
       ("algo,a", bpo::value(&algos)->multitoken(),
        "algorithms: range | pong | mcraptor | mcraptor-all (default: range "
-       "pong); mcraptor-all optimizes non_transit, mode_filter and "
+       "pong); mcraptor-all optimizes non_transit, avoided_modes and "
        "mode_switches; every ran "
        "cell (any engine/algo combination) within a (mode, "
        "dir) is checked pairwise against every other for agreement on the "
@@ -760,7 +760,7 @@ int main(int argc, char* argv[]) {
                 : algo_part == "mcraptor-all"
                     ? run_cpu_cell.template operator()<
                           routing::
-                              mcraptor_non_transit_mode_filter_mode_switches_state>()
+                              mcraptor_non_transit_avoided_modes_mode_switches_state>()
                     : run_cpu_cell
                           .template operator()<routing::raptor_state>());
             ++qa_n_cpu_cells;
@@ -778,7 +778,7 @@ int main(int argc, char* argv[]) {
                 : algo_part == "mcraptor-all"
                     ? run_gpu_cell.template operator()<
                           routing::gpu::
-                              gpu_mcraptor_non_transit_mode_filter_mode_switches_state>()
+                              gpu_mcraptor_non_transit_avoided_modes_mode_switches_state>()
                     : run_gpu_cell.template
                       operator()<routing::gpu::gpu_raptor_state>());
           }

@@ -51,18 +51,19 @@ struct gpu_mcraptor_crit_state : gpu_mcraptor_state {
 
 using gpu_mcraptor_non_transit_state =
     gpu_mcraptor_crit_state<arr_non_transit_criteria>;
-using gpu_mcraptor_mode_filter_state =
-    gpu_mcraptor_crit_state<arr_mode_filter_criteria>;
-using gpu_mcraptor_non_transit_mode_filter_state =
-    gpu_mcraptor_crit_state<arr_non_transit_mode_filter_criteria>;
+using gpu_mcraptor_avoided_modes_state =
+    gpu_mcraptor_crit_state<arr_avoided_modes_criteria>;
+using gpu_mcraptor_non_transit_avoided_modes_state =
+    gpu_mcraptor_crit_state<arr_non_transit_avoided_modes_criteria>;
 using gpu_mcraptor_mode_switches_state =
     gpu_mcraptor_crit_state<arr_mode_switches_criteria>;
 using gpu_mcraptor_non_transit_mode_switches_state =
     gpu_mcraptor_crit_state<arr_non_transit_mode_switches_criteria>;
-using gpu_mcraptor_mode_filter_mode_switches_state =
-    gpu_mcraptor_crit_state<arr_mode_filter_mode_switches_criteria>;
-using gpu_mcraptor_non_transit_mode_filter_mode_switches_state =
-    gpu_mcraptor_crit_state<arr_non_transit_mode_filter_mode_switches_criteria>;
+using gpu_mcraptor_avoided_modes_mode_switches_state =
+    gpu_mcraptor_crit_state<arr_avoided_modes_mode_switches_criteria>;
+using gpu_mcraptor_non_transit_avoided_modes_mode_switches_state =
+    gpu_mcraptor_crit_state<
+        arr_non_transit_avoided_modes_mode_switches_criteria>;
 
 template <direction SearchDir, typename Criteria>
 struct gpu_mcraptor {

@@ -246,7 +246,7 @@ TEST(routing, wheelchair_accessible_trips) {
               *routing::raptor_search(tt, rtt, ss, plain, q, dir).journeys_))
           << to << " mcraptor " << (dir == direction::kForward ? "fwd" : "bwd");
       auto all =
-          routing::mcraptor_non_transit_mode_filter_mode_switches_state{};
+          routing::mcraptor_non_transit_avoided_modes_mode_switches_state{};
       EXPECT_EQ(
           expected,
           dep_arr(*routing::raptor_search(tt, rtt, ss, all, q, dir).journeys_))

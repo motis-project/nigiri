@@ -216,28 +216,28 @@ routing_result raptor_search(
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(raptor_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_non_transit_state)
-NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_mode_filter_state)
-NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_non_transit_mode_filter_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_avoided_modes_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_non_transit_avoided_modes_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_mode_switches_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_non_transit_mode_switches_state)
-NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_mode_filter_mode_switches_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(mcraptor_avoided_modes_mode_switches_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
-    mcraptor_non_transit_mode_filter_mode_switches_state)
+    mcraptor_non_transit_avoided_modes_mode_switches_state)
 
 #if defined(NIGIRI_CUDA)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_raptor_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_non_transit_state)
-NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_mode_filter_state)
+NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_avoided_modes_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
-    gpu::gpu_mcraptor_non_transit_mode_filter_state)
+    gpu::gpu_mcraptor_non_transit_avoided_modes_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(gpu::gpu_mcraptor_mode_switches_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
     gpu::gpu_mcraptor_non_transit_mode_switches_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
-    gpu::gpu_mcraptor_mode_filter_mode_switches_state)
+    gpu::gpu_mcraptor_avoided_modes_mode_switches_state)
 NIGIRI_RAPTOR_SEARCH_INSTANTIATE(
-    gpu::gpu_mcraptor_non_transit_mode_filter_mode_switches_state)
+    gpu::gpu_mcraptor_non_transit_avoided_modes_mode_switches_state)
 #endif
 
 #undef NIGIRI_RAPTOR_SEARCH_INSTANTIATE

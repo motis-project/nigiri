@@ -129,16 +129,16 @@ struct arr_with {
 
 using arr_criteria = arr_with<>;
 using arr_non_transit_criteria = arr_with<non_transit_dim>;
-using arr_mode_filter_criteria = arr_with<mode_filter_dim>;
+using arr_avoided_modes_criteria = arr_with<avoided_modes_dim>;
 using arr_mode_switches_criteria = arr_with<mode_switches_dim>;
-using arr_non_transit_mode_filter_criteria =
-    arr_with<non_transit_dim, mode_filter_dim>;
+using arr_non_transit_avoided_modes_criteria =
+    arr_with<non_transit_dim, avoided_modes_dim>;
 using arr_non_transit_mode_switches_criteria =
     arr_with<non_transit_dim, mode_switches_dim>;
-using arr_mode_filter_mode_switches_criteria =
-    arr_with<mode_filter_dim, mode_switches_dim>;
-using arr_non_transit_mode_filter_mode_switches_criteria =
-    arr_with<non_transit_dim, mode_filter_dim, mode_switches_dim>;
+using arr_avoided_modes_mode_switches_criteria =
+    arr_with<avoided_modes_dim, mode_switches_dim>;
+using arr_non_transit_avoided_modes_mode_switches_criteria =
+    arr_with<non_transit_dim, avoided_modes_dim, mode_switches_dim>;
 
 template <typename Criteria>
 struct basic_mcraptor_state {
@@ -479,17 +479,17 @@ using mcraptor_state = basic_mcraptor_state<arr_criteria>;
 
 using mcraptor_non_transit_state =
     basic_mcraptor_state<arr_non_transit_criteria>;
-using mcraptor_mode_filter_state =
-    basic_mcraptor_state<arr_mode_filter_criteria>;
-using mcraptor_non_transit_mode_filter_state =
-    basic_mcraptor_state<arr_non_transit_mode_filter_criteria>;
+using mcraptor_avoided_modes_state =
+    basic_mcraptor_state<arr_avoided_modes_criteria>;
+using mcraptor_non_transit_avoided_modes_state =
+    basic_mcraptor_state<arr_non_transit_avoided_modes_criteria>;
 using mcraptor_mode_switches_state =
     basic_mcraptor_state<arr_mode_switches_criteria>;
 using mcraptor_non_transit_mode_switches_state =
     basic_mcraptor_state<arr_non_transit_mode_switches_criteria>;
-using mcraptor_mode_filter_mode_switches_state =
-    basic_mcraptor_state<arr_mode_filter_mode_switches_criteria>;
-using mcraptor_non_transit_mode_filter_mode_switches_state =
-    basic_mcraptor_state<arr_non_transit_mode_filter_mode_switches_criteria>;
+using mcraptor_avoided_modes_mode_switches_state =
+    basic_mcraptor_state<arr_avoided_modes_mode_switches_criteria>;
+using mcraptor_non_transit_avoided_modes_mode_switches_state =
+    basic_mcraptor_state<arr_non_transit_avoided_modes_mode_switches_criteria>;
 
 }  // namespace nigiri::routing

@@ -826,12 +826,12 @@ basic_mcraptor<SearchDir, Criteria>::split(delta_t const x) const {
 
 NIGIRI_MC_INSTANTIATE(arr_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_criteria)
-NIGIRI_MC_INSTANTIATE(arr_mode_filter_criteria)
+NIGIRI_MC_INSTANTIATE(arr_avoided_modes_criteria)
 NIGIRI_MC_INSTANTIATE(arr_mode_switches_criteria)
-NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_filter_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_avoided_modes_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_switches_criteria)
-NIGIRI_MC_INSTANTIATE(arr_mode_filter_mode_switches_criteria)
-NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_filter_mode_switches_criteria)
+NIGIRI_MC_INSTANTIATE(arr_avoided_modes_mode_switches_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria)
 
 #undef NIGIRI_MC_INSTANTIATE
 

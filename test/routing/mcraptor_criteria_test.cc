@@ -277,7 +277,7 @@ std::vector<std::string> rows(pareto_set<journey> const& js) {
   for (auto const& j : js) {
     v.push_back(fmt::format("{} {} t{} c{} f{} s{}", hhmm(j.departure_time()),
                             hhmm(j.arrival_time()), j.transfers_,
-                            j.criteria_cost_, j.criteria_mode_filter_ ? 1 : 0,
+                            j.criteria_cost_, j.criteria_avoided_modes_ ? 1 : 0,
                             j.criteria_mode_switches_));
   }
   std::sort(begin(v), end(v));
@@ -384,26 +384,26 @@ TEST(mcraptor_criteria, non_transit_trades_walking_for_arrival) {
 }
 
 // the flight is much faster, the train is the best without an avoided class
-TEST(mcraptor_criteria, mode_filter_keeps_best_without_avoided_class) {
+TEST(mcraptor_criteria, avoided_modes_keeps_best_without_avoided_class) {
   auto const s =
       between("F0", "F9", {at(9, 30), at(10, 30)}, {at(10, 15), at(11, 45)});
   expect_engines(s, {"10:00 10:30 t0 c0 f0 s0"});
-  expect_rows<mcraptor_mode_filter_state>(
+  expect_rows<mcraptor_avoided_modes_state>(
       s, {"10:00 10:30 t0 c0 f1 s0", "10:00 11:30 t0 c0 f0 s0"});
 }
 
 // air 10:30, coach 10:50, rail 11:30: each mask motis offers (minimizeWithout:
 // AIR, COACH, both), on the CPU and, through expect_engines, the GPU
-TEST(mcraptor_criteria, mode_filter_avoids_each_mask) {
+TEST(mcraptor_criteria, avoided_modes_avoids_each_mask) {
   auto const check = [&](clasz_mask_t const avoided,
                          std::vector<std::string> const& expected) {
     auto s =
         between("M0", "M9", {at(9, 30), at(10, 30)}, {at(10, 15), at(11, 45)});
     s.avoided_ = avoided;
     expect_engines(s, {"10:00 10:30 t0 c0 f0 s0"});
-    expect_rows<mcraptor_mode_filter_state>(s, expected);
-    expect_rows<mcraptor_non_transit_mode_filter_mode_switches_state>(s,
-                                                                      expected);
+    expect_rows<mcraptor_avoided_modes_state>(s, expected);
+    expect_rows<mcraptor_non_transit_avoided_modes_mode_switches_state>(
+        s, expected);
   };
   check(to_mask(clasz::kAir),
         {"10:00 10:30 t0 c0 f1 s0", "10:00 10:50 t0 c0 f0 s0"});
@@ -424,8 +424,8 @@ TEST(mcraptor_criteria, ride_has_the_route_class) {
     expect_engines(s, {flight_plain}, both, rtt);
     auto expected = std::vector<std::string>{flight, "10:00 11:30 t0 c0 f0 s0"};
     std::sort(begin(expected), end(expected));  // as rows()
-    expect_rows<mcraptor_mode_filter_state>(s, expected, both, rtt);
-    expect_rows<mcraptor_non_transit_mode_filter_mode_switches_state>(
+    expect_rows<mcraptor_avoided_modes_state>(s, expected, both, rtt);
+    expect_rows<mcraptor_non_transit_avoided_modes_mode_switches_state>(
         s, expected, both, rtt);
   };
   check(nullptr, "10:00 10:30 t0 c0 f0 s0", "10:00 10:30 t0 c0 f1 s0");
@@ -494,13 +494,13 @@ TEST(mcraptor_criteria, criteria_sets_combine) {
   expect_engines(s, {flight_plain});
   expect_rows<mcraptor_non_transit_state>(s, {flight_plain});
   expect_rows<mcraptor_mode_switches_state>(s, {flight_plain});
-  expect_rows<mcraptor_mode_filter_state>(s,
-                                          {flight, "10:00 11:00 t1 c0 f0 s0"});
-  expect_rows<mcraptor_non_transit_mode_filter_state>(
-      s, {flight, "10:00 11:00 t1 c10 f0 s0", "10:00 11:10 t1 c0 f0 s0"});
-  expect_rows<mcraptor_mode_filter_mode_switches_state>(
+  expect_rows<mcraptor_avoided_modes_state>(
       s, {flight, "10:00 11:00 t1 c0 f0 s0"});
-  expect_rows<mcraptor_non_transit_mode_filter_mode_switches_state>(
+  expect_rows<mcraptor_non_transit_avoided_modes_state>(
+      s, {flight, "10:00 11:00 t1 c10 f0 s0", "10:00 11:10 t1 c0 f0 s0"});
+  expect_rows<mcraptor_avoided_modes_mode_switches_state>(
+      s, {flight, "10:00 11:00 t1 c0 f0 s0"});
+  expect_rows<mcraptor_non_transit_avoided_modes_mode_switches_state>(
       s, {flight, "10:00 11:00 t1 c10 f0 s0", "10:00 11:10 t1 c0 f0 s1",
           "10:00 11:20 t1 c0 f0 s0"});
 }
@@ -514,8 +514,8 @@ TEST(mcraptor_criteria, later_departure_dominates_across_the_range) {
                                                  "10:30 11:10 t0 c0 f0 s0"};
   expect_engines(s, expected);
   expect_rows<mcraptor_non_transit_state>(s, expected);
-  expect_rows<mcraptor_non_transit_mode_filter_mode_switches_state>(s,
-                                                                    expected);
+  expect_rows<mcraptor_non_transit_avoided_modes_mode_switches_state>(s,
+                                                                      expected);
 }
 
 // K0 -> K9 leaves at 10:00 and arrives at 11:00 with one transfer, by a 10
@@ -528,7 +528,7 @@ TEST(mcraptor_criteria, ties_count_once_for_the_interval_extension) {
   q.min_connection_count_ = 1U;
   q.extend_interval_later_ = true;
   auto ss = search_state{};
-  auto state = mcraptor_non_transit_mode_filter_mode_switches_state{};
+  auto state = mcraptor_non_transit_avoided_modes_mode_switches_state{};
   auto const r = routing::raptor_search(test_tt(), nullptr, ss, state,
                                         std::move(q), direction::kForward);
   EXPECT_EQ((std::vector<std::string>{"10:00 11:00 t1 c0 f0 s1",

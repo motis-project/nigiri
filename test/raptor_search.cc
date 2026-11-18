@@ -86,7 +86,7 @@ std::vector<criteria_tuple_t> criteria_tuples(
   auto v = std::vector<criteria_tuple_t>{};
   for (auto const& j : js) {
     v.emplace_back(j.start_time_, j.dest_time_, j.transfers_, j.criteria_cost_,
-                   j.criteria_mode_filter_, j.criteria_mode_switches_);
+                   j.criteria_avoided_modes_, j.criteria_mode_switches_);
   }
   std::sort(begin(v), end(v));
   return v;
@@ -107,13 +107,13 @@ pareto_set<routing::journey> run_search(timetable const& tt,
 
 struct mc_crits {
   bool non_transit_{false};
-  bool mode_filter_{false};
+  bool avoided_modes_{false};
   bool mode_switches_{false};
 };
 
 // The legs of a McRAPTOR journey reproduce the criteria it was optimized for:
 // each walk (offset, footpath between stops - not the same-stop transfer)
-// adds its non-transit units, the classes of the rides give the mode filter
+// adds its non-transit units, the classes of the rides give the avoided-modes
 // and the mode switches.
 void expect_legs_match_criteria(timetable const& tt,
                                 rt_timetable const* rtt,
@@ -189,7 +189,8 @@ void expect_legs_match_criteria(timetable const& tt,
                 unsigned{j.criteria_cost_})
           << ss.str();
     }
-    EXPECT_EQ(c.mode_filter_ && avoided, j.criteria_mode_filter_) << ss.str();
+    EXPECT_EQ(c.avoided_modes_ && avoided, j.criteria_avoided_modes_)
+        << ss.str();
     EXPECT_EQ(c.mode_switches_ ? switches : 0U,
               unsigned{j.criteria_mode_switches_})
         << ss.str();
@@ -258,11 +259,11 @@ static range_result search_range(timetable const& tt,
 
   auto const mc = routing::mcraptor_supported(q, rtt);
   auto mc_non_transit = pareto_set<routing::journey>{};
-  auto mc_mode_filter = pareto_set<routing::journey>{};
-  auto mc_non_transit_mode_filter = pareto_set<routing::journey>{};
+  auto mc_avoided_modes = pareto_set<routing::journey>{};
+  auto mc_non_transit_avoided_modes = pareto_set<routing::journey>{};
   auto mc_mode_switches = pareto_set<routing::journey>{};
   auto mc_non_transit_mode_switches = pareto_set<routing::journey>{};
-  auto mc_mode_filter_mode_switches = pareto_set<routing::journey>{};
+  auto mc_avoided_modes_mode_switches = pareto_set<routing::journey>{};
   auto mc_all = pareto_set<routing::journey>{};
   if (mc) {
     // without extra criteria, mcraptor is raptor - down to the legs (as
@@ -290,13 +291,13 @@ static range_result search_range(timetable const& tt,
     auto const& b = base_tuples;
     mc_non_transit = expect_superset<mcraptor_non_transit_state>(
         tt, rtt, q, search_dir, b, {.non_transit_ = true}, "non_transit");
-    mc_mode_filter = expect_superset<mcraptor_mode_filter_state>(
-        tt, rtt, q, search_dir, b, {.mode_filter_ = true}, "mode_filter");
-    mc_non_transit_mode_filter =
-        expect_superset<mcraptor_non_transit_mode_filter_state>(
+    mc_avoided_modes = expect_superset<mcraptor_avoided_modes_state>(
+        tt, rtt, q, search_dir, b, {.avoided_modes_ = true}, "avoided_modes");
+    mc_non_transit_avoided_modes =
+        expect_superset<mcraptor_non_transit_avoided_modes_state>(
             tt, rtt, q, search_dir, b,
-            {.non_transit_ = true, .mode_filter_ = true},
-            "non_transit + mode_filter");
+            {.non_transit_ = true, .avoided_modes_ = true},
+            "non_transit + avoided_modes");
     mc_mode_switches = expect_superset<mcraptor_mode_switches_state>(
         tt, rtt, q, search_dir, b, {.mode_switches_ = true}, "mode_switches");
     mc_non_transit_mode_switches =
@@ -304,18 +305,18 @@ static range_result search_range(timetable const& tt,
             tt, rtt, q, search_dir, b,
             {.non_transit_ = true, .mode_switches_ = true},
             "non_transit + mode_switches");
-    mc_mode_filter_mode_switches =
-        expect_superset<mcraptor_mode_filter_mode_switches_state>(
+    mc_avoided_modes_mode_switches =
+        expect_superset<mcraptor_avoided_modes_mode_switches_state>(
             tt, rtt, q, search_dir, b,
-            {.mode_filter_ = true, .mode_switches_ = true},
-            "mode_filter + mode_switches");
+            {.avoided_modes_ = true, .mode_switches_ = true},
+            "avoided_modes + mode_switches");
     mc_all =
-        expect_superset<mcraptor_non_transit_mode_filter_mode_switches_state>(
+        expect_superset<mcraptor_non_transit_avoided_modes_mode_switches_state>(
             tt, rtt, q, search_dir, b,
             {.non_transit_ = true,
-             .mode_filter_ = true,
+             .avoided_modes_ = true,
              .mode_switches_ = true},
-            "non_transit + mode_filter + mode_switches");
+            "non_transit + avoided_modes + mode_switches");
   }
 
 #if defined(NIGIRI_CUDA)
@@ -345,13 +346,13 @@ static range_result search_range(timetable const& tt,
       expect_gpu_equal<gpu_mcraptor_non_transit_state>(
           tt, rtt, q, search_dir, g, mc_non_transit, {.non_transit_ = true},
           "non_transit");
-      expect_gpu_equal<gpu_mcraptor_mode_filter_state>(
-          tt, rtt, q, search_dir, g, mc_mode_filter, {.mode_filter_ = true},
-          "mode_filter");
-      expect_gpu_equal<gpu_mcraptor_non_transit_mode_filter_state>(
-          tt, rtt, q, search_dir, g, mc_non_transit_mode_filter,
-          {.non_transit_ = true, .mode_filter_ = true},
-          "non_transit + mode_filter");
+      expect_gpu_equal<gpu_mcraptor_avoided_modes_state>(
+          tt, rtt, q, search_dir, g, mc_avoided_modes, {.avoided_modes_ = true},
+          "avoided_modes");
+      expect_gpu_equal<gpu_mcraptor_non_transit_avoided_modes_state>(
+          tt, rtt, q, search_dir, g, mc_non_transit_avoided_modes,
+          {.non_transit_ = true, .avoided_modes_ = true},
+          "non_transit + avoided_modes");
       expect_gpu_equal<gpu_mcraptor_mode_switches_state>(
           tt, rtt, q, search_dir, g, mc_mode_switches, {.mode_switches_ = true},
           "mode_switches");
@@ -359,15 +360,17 @@ static range_result search_range(timetable const& tt,
           tt, rtt, q, search_dir, g, mc_non_transit_mode_switches,
           {.non_transit_ = true, .mode_switches_ = true},
           "non_transit + mode_switches");
-      expect_gpu_equal<gpu_mcraptor_mode_filter_mode_switches_state>(
-          tt, rtt, q, search_dir, g, mc_mode_filter_mode_switches,
-          {.mode_filter_ = true, .mode_switches_ = true},
-          "mode_filter + mode_switches");
+      expect_gpu_equal<gpu_mcraptor_avoided_modes_mode_switches_state>(
+          tt, rtt, q, search_dir, g, mc_avoided_modes_mode_switches,
+          {.avoided_modes_ = true, .mode_switches_ = true},
+          "avoided_modes + mode_switches");
       expect_gpu_equal<
-          gpu_mcraptor_non_transit_mode_filter_mode_switches_state>(
+          gpu_mcraptor_non_transit_avoided_modes_mode_switches_state>(
           tt, rtt, q, search_dir, g, mc_all,
-          {.non_transit_ = true, .mode_filter_ = true, .mode_switches_ = true},
-          "non_transit + mode_filter + mode_switches");
+          {.non_transit_ = true,
+           .avoided_modes_ = true,
+           .mode_switches_ = true},
+          "non_transit + avoided_modes + mode_switches");
     }
   }
 #else

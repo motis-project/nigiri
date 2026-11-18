@@ -86,7 +86,7 @@ struct journey {
 
   bool dominates(journey const& o) const {
     return tuple_dominates(o) && criteria_cost_ <= o.criteria_cost_ &&
-           criteria_mode_filter_ <= o.criteria_mode_filter_ &&
+           criteria_avoided_modes_ <= o.criteria_avoided_modes_ &&
            criteria_mode_switches_ <= o.criteria_mode_switches_;
   }
 
@@ -134,7 +134,7 @@ struct journey {
   std::uint8_t transfers_{0U};
   // extra criteria, only set by algorithms optimizing them
   std::uint16_t criteria_cost_{0U};  // non_transit minutes
-  bool criteria_mode_filter_{false};  // uses an avoided vehicle class
+  bool criteria_avoided_modes_{false};  // uses an avoided vehicle class
   std::uint8_t criteria_mode_switches_{0U};  // vehicle-class switches
   bool error_{false};
   bool is_reconstructed_{false};

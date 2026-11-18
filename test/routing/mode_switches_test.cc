@@ -90,11 +90,11 @@ TEST(mode_switches, other_group_dominates_with_a_switch_to_spare) {
 // complete dominance has to imply ordered(a) <= ordered(b), and the integer
 // has to keep every field.
 TEST(mc_extras, fields_are_independent_and_ordered) {
-  using x = arr_non_transit_mode_filter_mode_switches_criteria::extras_t;
+  using x = arr_non_transit_avoided_modes_mode_switches_criteria::extras_t;
   auto const make = [](std::uint32_t const nt, std::uint32_t const mf,
                        std::uint32_t const g, std::uint32_t const sw) {
     return x::bits({.non_transit_ = static_cast<std::uint16_t>(nt),
-                    .mode_filter_ = static_cast<std::uint16_t>(mf),
+                    .avoided_modes_ = static_cast<std::uint16_t>(mf),
                     .group_ = static_cast<std::uint16_t>(g),
                     .switches_ = static_cast<std::uint16_t>(sw)});
   };
@@ -105,7 +105,7 @@ TEST(mc_extras, fields_are_independent_and_ordered) {
           auto const a = make(nt, mf, g, sw);
           auto const f = x::fields(a);
           EXPECT_EQ(nt, std::uint32_t{f.non_transit_});
-          EXPECT_EQ(mf, std::uint32_t{f.mode_filter_});
+          EXPECT_EQ(mf, std::uint32_t{f.avoided_modes_});
           EXPECT_EQ(g, std::uint32_t{f.group_});
           EXPECT_EQ(sw, std::uint32_t{f.switches_});
           for (auto const b : {make(nt, 1U, 1U, sw),

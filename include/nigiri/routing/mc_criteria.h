@@ -34,7 +34,7 @@ namespace nigiri::routing {
 // stay 0. No padding: the engines store and compare the 16 bits as an integer.
 struct mc_fields {
   std::uint16_t non_transit_ : 7 {0U};  // non_transit_dim
-  std::uint16_t mode_filter_ : 1 {0U};  // mode_filter_dim
+  std::uint16_t avoided_modes_ : 1 {0U};  // avoided_modes_dim
   std::uint16_t group_ : 3 {0U};  // mode_switches_dim: group of the last trip
   std::uint16_t switches_ : 4 {0U};  // mode_switches_dim
   std::uint16_t spare_ : 1 {0U};
@@ -104,34 +104,34 @@ struct non_transit_dim : mc_dim {
   }
 };
 
-// ---- mode_filter ------------------------------------------------------------
-// "Uses an avoided vehicle class" (query::avoided_claszes_) as a Pareto
-// dimension, not a filter.
-struct mode_filter_dim : mc_dim {
+// ---- avoided_modes
+// ------------------------------------------------------------ "Uses an avoided
+// vehicle class" (query::avoided_claszes_) as a Pareto dimension, not a filter.
+struct avoided_modes_dim : mc_dim {
   static constexpr bool kRide = true;
 
   CISTA_CUDA_COMPAT static void after_ride(mc_fields& f,
                                            clasz const c,
                                            mc_context const& ctx) {
     if (is_allowed(ctx.avoided_, c)) {
-      f.mode_filter_ = 1U;
+      f.avoided_modes_ = 1U;
     }
   }
   CISTA_CUDA_COMPAT static bool dominates(mc_fields const a,
                                           mc_fields const b) {
-    return a.mode_filter_ <= b.mode_filter_;
+    return a.avoided_modes_ <= b.avoided_modes_;
   }
   CISTA_CUDA_COMPAT static void join(mc_fields const a,
                                      mc_fields const b,
                                      mc_fields& out) {
-    out.mode_filter_ =
-        static_cast<std::uint16_t>(a.mode_filter_ | b.mode_filter_);
+    out.avoided_modes_ =
+        static_cast<std::uint16_t>(a.avoided_modes_ | b.avoided_modes_);
   }
   static void to_journey(mc_fields const f, journey& j) {
-    j.criteria_mode_filter_ = f.mode_filter_ != 0U;
+    j.criteria_avoided_modes_ = f.avoided_modes_ != 0U;
   }
   static void of_journey(journey const& j, mc_fields& f) {
-    f.mode_filter_ = j.criteria_mode_filter_ ? 1U : 0U;
+    f.avoided_modes_ = j.criteria_avoided_modes_ ? 1U : 0U;
   }
 };
 
