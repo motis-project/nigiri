@@ -8,9 +8,13 @@
 #include <vector>
 
 #include "fmt/format.h"
+#include "fmt/ranges.h"
+
+#include "utl/helpers/algorithm.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
+#include "nigiri/routing/raptor/bmraptor.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
@@ -18,6 +22,10 @@
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
+
+#if defined(NIGIRI_CUDA)
+#include "nigiri/routing/gpu/raptor.h"
+#endif
 
 #include "../raptor_search.h"
 
@@ -332,32 +340,93 @@ std::vector<td_offset> one_minute(unixtime_t const from,
 
 using dirs_t = std::initializer_list<direction>;
 
+// BMRAPP, on the CPU and the GPU (mc phases on the device where supported),
+// against mcraptor's rows: a restricted Pareto set (bmrap_common.h) scanned as
+// pong, so a journey of both must have the same criteria, and BMRAPP finds
+// one of mcraptor's if there are any.
+template <typename Criteria>
+void expect_bmrapp(query const& q,
+                   direction const dir,
+                   rt_timetable const* rtt,
+                   std::vector<std::string> const& expected,
+                   std::string_view const tag) {
+  auto const check = [&](pareto_set<journey> const& js,
+                         std::string_view const engine) {
+    auto const key = [](std::string const& row) {
+      return row.substr(0U, row.find(" c"));  // departure, arrival, transfers
+    };
+    auto common = 0U;
+    for (auto const& r : rows(js)) {
+      if (utl::any_of(expected,
+                      [&](std::string const& e) { return key(e) == key(r); })) {
+        ++common;
+        EXPECT_TRUE(utl::find(expected, r) != end(expected))
+            << tag << ", " << engine << ": " << r;
+      }
+    }
+    EXPECT_TRUE(expected.empty() || common != 0U)
+        << tag << ", " << engine << ": " << fmt::format("{}", rows(js));
+  };
+
+  auto ss = search_state{};
+  auto as = raptor_state{};
+  auto ms = basic_mcraptor_state<Criteria>{};
+  check(*bmrap_profile_search<Criteria>(test_tt(), rtt, ss, as, ms, q, dir)
+             .journeys_,
+        "bmrapp");
+#if defined(NIGIRI_CUDA)
+  if (rtt != nullptr) {
+    const_cast<rt_timetable&>(*rtt).gpu_rtt_.ptr_ =
+        gpu::make_gpu_rtt(test_tt(), *rtt);
+  }
+  auto const gtt = gpu::gpu_timetable{test_tt()};
+  auto gs = gpu::gpu_raptor_state{gtt};
+  check(*bmrap_profile_search<Criteria>(test_tt(), rtt, ss, gs, ms, q, dir)
+             .journeys_,
+        "gpu bmrapp");
+#endif
+}
+
+template <typename State>
+struct criteria_of;
+template <typename Criteria>
+struct criteria_of<basic_mcraptor_state<Criteria>> {
+  using type = Criteria;
+};
+
+// mcraptor's result, and BMRAPP's with the same criteria (CPU, and GPU)
 template <typename State>
 void expect_rows(scenario const& s,
                  std::vector<std::string> const& expected,
                  dirs_t const dirs = {direction::kForward,
                                       direction::kBackward},
                  rt_timetable const* rtt = nullptr) {
+  using criteria_t = typename criteria_of<State>::type;
   for (auto const dir : dirs) {
+    auto const tag = dir == direction::kForward ? "forward" : "backward";
     auto ss = search_state{};
     auto state = State{};
     auto const r =
         routing::raptor_search(test_tt(), rtt, ss, state, s.make(dir), dir);
-    EXPECT_EQ(expected, rows(*r.journeys_))
-        << (dir == direction::kForward ? "forward" : "backward");
+    EXPECT_EQ(expected, rows(*r.journeys_)) << tag;
+
+    expect_bmrapp<criteria_t>(s.make(dir), dir, rtt, expected, tag);
   }
 }
 
-// plain raptor's result, with pong, mcraptor and the GPU compared against it
+// plain raptor's result, with pong, mcraptor, BMRAPP and the GPU compared
+// against it
 void expect_engines(scenario const& s,
                     std::vector<std::string> const& expected,
                     dirs_t const dirs = {direction::kForward,
                                          direction::kBackward},
                     rt_timetable const* rtt = nullptr) {
   for (auto const dir : dirs) {
+    auto const tag = dir == direction::kForward ? "forward" : "backward";
     EXPECT_EQ(expected,
               rows(test::raptor_search(test_tt(), rtt, s.make(dir), dir)))
-        << (dir == direction::kForward ? "forward" : "backward");
+        << tag;
+    expect_bmrapp<arr_criteria>(s.make(dir), dir, rtt, expected, tag);
   }
 }
 
@@ -752,6 +821,31 @@ TEST(td_offset_engines, fixed_departure_time) {
             rows(*routing::raptor_search(test_tt(), nullptr, ss, state, q,
                                          direction::kForward)
                       .journeys_));
+  expect_bmrapp<arr_non_transit_criteria>(q, direction::kForward, nullptr,
+                                          {"09:50 11:00 t0 c5 f0 s0"}, "fixed");
+}
+
+// Fixed start time 09:30, the walk to O1 opens at 09:40 for 5 minutes: the
+// 10 minutes before it are waiting, as the wait for the 10:00 after it.
+TEST(td_offset_engines, fixed_departure_waits_for_the_start_walk) {
+  auto const s = scenario{
+      .to_ = {{stop_loc("O9"), 0min, 0U}},
+      .td_from_ = {{stop_loc("O1"), one_minute(at(9, 40), 5min)}},
+      .intermodal_ = true,
+  };
+  auto q = s.make(direction::kForward);
+  q.start_time_ = at(9, 30);
+  EXPECT_EQ(
+      std::vector<std::string>{"09:30 10:30 t0 c0 f0 s0"},
+      rows(test::raptor_search(test_tt(), nullptr, q, direction::kForward)));
+  auto ss = search_state{};
+  auto state = mcraptor_non_transit_state{};
+  EXPECT_EQ(std::vector<std::string>{"09:30 10:30 t0 c5 f0 s0"},
+            rows(*routing::raptor_search(test_tt(), nullptr, ss, state, q,
+                                         direction::kForward)
+                      .journeys_));
+  expect_bmrapp<arr_non_transit_criteria>(q, direction::kForward, nullptr,
+                                          {"09:30 10:30 t0 c5 f0 s0"}, "fixed");
 }
 
 // mirrored: the 11:00 trip arrives at 12:00, 5 minute walk, arrive by 12:10
@@ -772,4 +866,6 @@ TEST(td_offset_engines, fixed_arrival_time) {
             rows(*routing::raptor_search(test_tt(), nullptr, ss, state, q,
                                          direction::kBackward)
                       .journeys_));
+  expect_bmrapp<arr_non_transit_criteria>(q, direction::kBackward, nullptr,
+                                          {"11:00 12:10 t0 c5 f0 s0"}, "fixed");
 }

@@ -1,6 +1,7 @@
 #include "nigiri/routing/gpu/mcraptor.h"
 
 #include <algorithm>
+#include <array>
 #include <numeric>
 #include <tuple>
 #include <type_traits>
@@ -56,12 +57,18 @@ void upload(T* const dev,
 }
 
 struct gpu_mcraptor_state::impl {
-  impl(gpu_timetable const& gtt, gpu_mcraptor_limits const& limits)
-      : tt_{gtt.impl_->to_device_timetable()} {
+  impl(gpu_timetable const& gtt,
+       gpu_mcraptor_limits const& limits,
+       std::optional<gpu_mcraptor_scratch> const& scratch)
+      : tt_{gtt.impl_->to_device_timetable()}, owns_stream_{!scratch} {
     utl::verify(limits.et_tasks_ <= stop_bag_ref::kMaxSlots,
                 "gpu mcraptor: {} et task slots exceed the stop bag ref",
                 limits.et_tasks_);
-    cudaStreamCreate(&stream_);
+    if (scratch.has_value()) {
+      stream_ = scratch->stream_;
+    } else {
+      cudaStreamCreate(&stream_);
+    }
 
     auto const n_locations = tt_.n_locations_;
     bags_.resize(static_cast<std::size_t>(n_locations) * kMcBagCap);
@@ -113,9 +120,16 @@ struct gpu_mcraptor_state::impl {
     // stop bags per et task slot, not per route stop: a round only looks up
     // the boardable stops of its marked routes (see stop_bag_ref)
     auto const n_slots = std::min<std::size_t>(n_route_stops, limits.et_tasks_);
-    et_task_list_.resize(n_slots);
+    if (scratch.has_value()) {
+      et_task_list_ = {scratch->et_task_list_, n_slots};
+      stop_bag_ref_ = reinterpret_cast<stop_bag_ref*>(scratch->et_result_);
+    } else {
+      own_et_task_list_.resize(n_slots);
+      own_stop_bag_ref_.resize(n_route_stops);
+      et_task_list_ = to_mutable_view(own_et_task_list_);
+      stop_bag_ref_ = thrust::raw_pointer_cast(own_stop_bag_ref_.data());
+    }
     et_task_count_.resize(1U);
-    stop_bag_ref_.resize(n_route_stops);
     stop_bag_trips_.resize(n_slots * kMcPrefixK);
     stop_bag_parents_.resize(n_slots * kMcPrefixK);
     stop_bag_board_extras_.resize(n_slots * kMcPrefixK);
@@ -123,13 +137,26 @@ struct gpu_mcraptor_state::impl {
     done_.resize(1U);
     overflow_.resize(1U);
     fill_bytes(overflow_, 0, stream_);
+
+    for (auto& g : guide_) {
+      g.labels_.resize(limits.guide_labels_);
+      g.begin_.resize(n_locations);
+      g.n_.resize(n_locations);
+      fill_bytes(g.n_, 0, stream_);
+      g.count_.resize(1U);
+      g.overflow_.resize(1U);
+      fill_bytes(g.overflow_, 0, stream_);
+    }
+    guide_targets_.resize(kMcGuideTargetCap);
   }
 
   // Work still queued on the stream (e.g. the selective clears at the end of
   // a query) would otherwise run on the buffers the members free below.
   ~impl() {
     cudaStreamSynchronize(stream_);
-    cudaStreamDestroy(stream_);
+    if (owns_stream_) {
+      cudaStreamDestroy(stream_);
+    }
   }
 
   // per query: the rt timetable may be absent or have grown
@@ -215,9 +242,12 @@ struct gpu_mcraptor_state::impl {
 
   thrust::device_vector<std::uint32_t> route_list_;
   thrust::device_vector<std::uint32_t> route_list_count_;
-  thrust::device_vector<std::uint32_t> et_task_list_;
+  // borrowed (gpu_mcraptor_scratch) or the own_* below
+  cuda::std::span<std::uint32_t> et_task_list_;
+  stop_bag_ref* stop_bag_ref_;
+  thrust::device_vector<std::uint32_t> own_et_task_list_;
+  thrust::device_vector<stop_bag_ref> own_stop_bag_ref_;
   thrust::device_vector<std::uint32_t> et_task_count_;
-  thrust::device_vector<stop_bag_ref> stop_bag_ref_;
   thrust::device_vector<std::uint32_t> stop_bag_trips_;
   thrust::device_vector<std::uint32_t> stop_bag_parents_;
   thrust::device_vector<std::uint32_t> stop_bag_board_extras_;
@@ -225,6 +255,19 @@ struct gpu_mcraptor_state::impl {
   thrust::device_vector<std::uint32_t> done_;
   pinned_host_buffer<std::uint32_t> done_pin_;
   thrust::device_vector<std::uint32_t> overflow_;
+
+  // one guide copy per direction, taken by its searches and read by the other
+  // direction's; outlives the search, and so does its overflow flag
+  struct guide_copy {
+    thrust::device_vector<mc_guide_entry> labels_;
+    thrust::device_vector<std::uint32_t> begin_;
+    thrust::device_vector<std::uint32_t> n_;
+    thrust::device_vector<std::uint32_t> count_;
+    thrust::device_vector<std::uint32_t> overflow_;
+  };
+  std::array<guide_copy, 2> guide_;
+  thrust::device_vector<mc_guide_target> guide_targets_;
+  pinned_host_buffer<mc_guide_target> guide_targets_pin_;
 
   thrust::device_vector<std::uint64_t> is_dest_[2];
   pinned_host_buffer<std::uint64_t> is_dest_pin_[2];
@@ -251,12 +294,15 @@ struct gpu_mcraptor_state::impl {
   device_buffer<std::uint32_t> rec_count_;
   pinned_host_buffer<std::uint32_t> rec_count_pin_;
 
+  bool owns_stream_;  // else the owning scalar state's (gpu_mcraptor_scratch)
   cudaStream_t stream_;
 };
 
-gpu_mcraptor_state::gpu_mcraptor_state(gpu_timetable const& gtt,
-                                       gpu_mcraptor_limits const& limits)
-    : impl_{std::make_unique<impl>(gtt, limits)} {}
+gpu_mcraptor_state::gpu_mcraptor_state(
+    gpu_timetable const& gtt,
+    gpu_mcraptor_limits const& limits,
+    std::optional<gpu_mcraptor_scratch> const& scratch)
+    : impl_{std::make_unique<impl>(gtt, limits, scratch)} {}
 
 gpu_mcraptor_state::~gpu_mcraptor_state() = default;
 
@@ -382,6 +428,11 @@ __global__ void mc_demote_bags_kernel(mcraptor_impl<SearchDir, Criteria> r) {
   r.demote_bags();
 }
 
+template <direction SearchDir, typename Criteria>
+__global__ void mc_take_guide_kernel(mcraptor_impl<SearchDir, Criteria> r) {
+  r.take_guide();
+}
+
 // one thread per destination bag slot; the journeys are packed at the front
 template <direction SearchDir, typename Criteria>
 __global__ void mc_reconstruct_kernel(location_idx_t const* const dest_list,
@@ -456,6 +507,17 @@ gpu_mcraptor<SearchDir, Criteria>::gpu_mcraptor(
                              lb);
 }
 
+static mc_guide_copy guide_view(gpu_mcraptor_state::impl::guide_copy& g) {
+  auto const ptr = [](auto& v) { return thrust::raw_pointer_cast(v.data()); };
+  return {.labels_ = ptr(g.labels_),
+          .begin_ = ptr(g.begin_),
+          .n_ = ptr(g.n_),
+          .count_ = ptr(g.count_),
+          .overflow_ = ptr(g.overflow_),
+          .cap_ = static_cast<std::uint32_t>(g.labels_.size())};
+}
+
+// guided by the other direction's copy (take_guide() points at its own)
 template <direction SearchDir, typename Criteria>
 mcraptor_impl<SearchDir, Criteria> make_impl(
     gpu_mcraptor_state::impl& s,
@@ -512,12 +574,13 @@ mcraptor_impl<SearchDir, Criteria> make_impl(
       .rt_transport_mark_ = {to_mutable_view(s.rt_transport_mark_)},
       .route_list_ = to_mutable_view(s.route_list_),
       .route_list_count_ = ptr(s.route_list_count_),
-      .et_task_list_ = to_mutable_view(s.et_task_list_),
+      .et_task_list_ = s.et_task_list_,
       .et_task_count_ = ptr(s.et_task_count_),
-      .stop_bag_ref_ = ptr(s.stop_bag_ref_),
+      .stop_bag_ref_ = s.stop_bag_ref_,
       .stop_bag_trips_ = ptr(s.stop_bag_trips_),
       .stop_bag_parents_ = ptr(s.stop_bag_parents_),
-      .stop_bag_board_extras_ = ptr(s.stop_bag_board_extras_)};
+      .stop_bag_board_extras_ = ptr(s.stop_bag_board_extras_),
+      .guide_ = guide_view(s.guide_[dir_idx ^ 1U])};
 }
 
 template <direction SearchDir, typename Criteria>
@@ -613,6 +676,20 @@ void gpu_mcraptor<SearchDir, Criteria>::execute(
     with_clasz ? (is_wheelchair_ ? f(t{}, t{}) : f(t{}, n{}))
                : (is_wheelchair_ ? f(n{}, t{}) : f(n{}, n{}));
   };
+  // BM-RAPTOR pruning (see mcraptor_impl::bound_prunes)
+  if (bounds_ != nullptr) {
+    r.bounds_ =
+        cuda::std::span<delta_t const>{bounds_->device_, bounds_->size()};
+    r.bounds_n_locations_ = bounds_->n_locations_;
+    r.bounds_budget_ = bounds_->budget_;
+    r.bounds_staggered_ = bounds_->staggered_;
+    r.has_bounds_ = true;
+  }
+  r.cur_budget_ = end_k - 1U;  // trips allowed for this start time
+  if (n_guide_targets_ != 0U) {
+    r.guide_targets_ = cuda::std::span<mc_guide_target const>{
+        thrust::raw_pointer_cast(s.guide_targets_.data()), n_guide_targets_};
+  }
 
   // === ROUTING KERNELS ===
   launch(mc_init_arrivals_kernel<SearchDir, Criteria>, s.stream_, r);
@@ -678,7 +755,7 @@ void gpu_mcraptor<SearchDir, Criteria>::execute(
   auto* const rec_out_dev = s.rec_out_.ensure(total, s.stream_);
   auto* const rec_host = s.rec_host_out_.ensure(total);
   auto* const overflow_pin =
-      s.overflow_pin_.ensure(3U);  // flags, breadcrumb + pool use
+      s.overflow_pin_.ensure(4U);  // flags, breadcrumb + pool use, guide
   auto* const rec_count_dev = s.rec_count_.ensure(1U, s.stream_);
   auto* const rec_count_pin = s.rec_count_pin_.ensure(1U);
 
@@ -709,6 +786,10 @@ void gpu_mcraptor<SearchDir, Criteria>::execute(
   CUDA_CHECK(cudaMemcpyAsync(
       overflow_pin + 2U, thrust::raw_pointer_cast(s.bag_pool_count_.data()),
       sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
+  CUDA_CHECK(cudaMemcpyAsync(
+      overflow_pin + 3U,
+      thrust::raw_pointer_cast(s.guide_[kDirIdx ^ 1U].overflow_.data()),
+      sizeof(std::uint32_t), cudaMemcpyDeviceToHost, s.stream_));
   cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
   auto const n_rec = *rec_count_pin;
@@ -720,6 +801,9 @@ void gpu_mcraptor<SearchDir, Criteria>::execute(
   }
 
   // capacity canaries: a lossy search must never go unnoticed
+  utl::verify(n_guide_targets_ == 0U || overflow_pin[3] == 0U,
+              "gpu mcraptor: capacity overflow: guide (cap {} labels)",
+              s.guide_[kDirIdx ^ 1U].labels_.size());
   utl::verify(*overflow_pin == 0U,
               "gpu mcraptor: capacity overflow: bag={} (pool {} of {} blocks) "
               "arena={} ({} of {} breadcrumbs) route_bag={}",
@@ -769,6 +853,51 @@ void gpu_mcraptor<SearchDir, Criteria>::reconstruct(query const& q,
                                                     journey& j) {
   mc_reconstruct_offsets<SearchDir>(tt_, rtt_, q, j);
   j.is_reconstructed_ = true;
+}
+
+template <direction SearchDir, typename Criteria>
+void gpu_mcraptor<SearchDir, Criteria>::take_guide() {
+  auto& s = *state_.impl_;
+  auto& g = s.guide_[kDirIdx];
+  fill_bytes(g.n_, 0, s.stream_);
+  fill_bytes(g.count_, 0, s.stream_);
+  fill_bytes(g.overflow_, 0, s.stream_);
+  auto r = make_impl<SearchDir, Criteria>(s, kDirIdx, transfer_time_settings_,
+                                          allowed_claszes_, ctx_, 0U, base_,
+                                          worst_at_dest_, {});
+  r.guide_ = guide_view(g);  // its own direction's copy
+  launch(mc_take_guide_kernel<SearchDir, Criteria>, s.stream_, r);
+}
+
+template <direction SearchDir, typename Criteria>
+void gpu_mcraptor<SearchDir, Criteria>::set_guide(
+    std::vector<journey const*> const& targets) {
+  auto& s = *state_.impl_;
+  // beyond the target buffer: unguided, which is complete, only slower
+  n_guide_targets_ = targets.size() <= kMcGuideTargetCap
+                         ? static_cast<std::uint32_t>(targets.size())
+                         : 0U;
+  if (n_guide_targets_ == 0U) {
+    return;
+  }
+  // the previous search synchronized the stream: the pin is free
+  auto* const pin = s.guide_targets_pin_.ensure(targets.size());
+  for (auto i = 0U; i != targets.size(); ++i) {
+    auto const& j = *targets[i];
+    pin[i] = {.trips_ = static_cast<std::uint8_t>(j.transfers_ + 1U),
+              .extras_ = static_cast<std::uint16_t>(
+                  Criteria::extras_t::of_journey(j))};
+  }
+  CUDA_CHECK(cudaMemcpyAsync(thrust::raw_pointer_cast(s.guide_targets_.data()),
+                             pin, targets.size() * sizeof(mc_guide_target),
+                             cudaMemcpyHostToDevice, s.stream_));
+}
+
+template <direction SearchDir, typename Criteria>
+void gpu_mcraptor<SearchDir, Criteria>::set_bounds(bmrap_bounds const* b) {
+  bounds_ = (b == nullptr || b->empty()) ? nullptr : b;
+  utl::verify(bounds_ == nullptr || bounds_->device_ != nullptr,
+              "gpu mcraptor: bmrap bounds must be built on the device");
 }
 
 #define NIGIRI_GPU_MCRAPTOR_INSTANTIATE(C)             \

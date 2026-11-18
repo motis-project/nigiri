@@ -273,6 +273,49 @@ struct mc_extras {
   }
 };
 
+// ---- guided searches (BMRAPP) ----------------------------------------------
+// take_guide() copies a search's labels per stop; a guided search of the other
+// direction (set_guide()) then keeps only the labels that join one of them into
+// one of its targets. t_: the arrival (raw).
+struct mc_guide_entry {
+  delta_t t_;
+  std::uint8_t round_;
+  std::uint16_t extras_;
+};
+// trips_: transfers + 1, extras_: mc_extras::of_journey()
+struct mc_guide_target {
+  std::uint8_t trips_;
+  std::uint16_t extras_;
+};
+
+// An arrival at a stop at t after k trips with `extras` is kept iff one of the
+// guide labels there is catchable from it (post-transfer: one buffer of
+// `slack`) and the two join into one of the targets.
+template <direction SearchDir,
+          typename Extras,
+          typename Labels,
+          typename Targets>
+CISTA_CUDA_COMPAT bool guide_feasible(Labels const& labels,
+                                      Targets const& targets,
+                                      unsigned const k,
+                                      delta_t const t,
+                                      std::uint32_t const extras,
+                                      int const slack) {
+  for (auto const& e : labels) {
+    if (SearchDir == direction::kForward ? t > e.t_ + slack
+                                         : t < e.t_ - slack) {
+      continue;  // not catchable
+    }
+    for (auto const& target : targets) {
+      if (k + e.round_ <= target.trips_ &&
+          Extras::join_fits(extras, e.extras_, target.extras_)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ---- breadcrumbs ------------------------------------------------------------
 // The transit leg behind an arrival: the trip (transport_idx_t on traffic day
 // day_, or rt_transport_idx_t if day_ is invalid), its board and alight stops,

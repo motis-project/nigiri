@@ -104,8 +104,8 @@ struct raptor_impl {
       auto const l = starts_[i].first;
       auto const t = unix_to_delta(base(), starts_[i].second);
       auto const v = via_offset_t{0};
-      round_times_.update_min(0U, l, v, t, make_start_bc());
-      touch_round(0U, l);
+      round_times_.update_min(start_round_, l, v, t, make_start_bc());
+      touch_round(start_round_, l);
       station_mark_.mark(to_idx(l));
     }
 
@@ -661,7 +661,8 @@ struct raptor_impl {
     }
 
     if (is_better(fp_target_time, best_.get(target_l, Vias)) &&
-        within_bounds(k, target_l, fp_target_time)) {
+        within_bounds(k, target_l, fp_target_time) &&
+        !bound_prunes(k, to_idx(target_l), fp_target_time)) {
       round_times_.update_min(k, target_l, Vias, fp_target_time, bc);
       touch_round(k, target_l);
       best_.update_min(target_l, Vias, fp_target_time);
@@ -1013,8 +1014,7 @@ struct raptor_impl {
                          stop_idx_t const stop_idx,
                          day_idx_t const day_at_stop,
                          minutes_after_midnight_t const mam_at_stop) {
-    // an event equal to time-at-dest must still be boardable
-    // (equal-arrival coverage for the pong)
+    // an event equal to time_at_dest_ stays boardable (for the pong)
     return tt_.get_earliest_transport<SearchDir>(
         rtt_, r, stop_idx, day_at_stop, mam_at_stop,
         [&](day_idx_t const day, auto const mam) {
@@ -1167,15 +1167,60 @@ struct raptor_impl {
     return !dist_to_end_.empty();
   }
 
+  // as raptor::bound_prunes()
+  __device__ __forceinline__ bool bound_prunes(unsigned const k,
+                                               std::uint32_t const l,
+                                               delta_t const t) {
+    if (!has_bounds_) {
+      return false;
+    }
+    if (k > bounds_budget_) {
+      return true;
+    }
+    return !is_better_or_eq(
+        t, bm_bounds_[static_cast<std::size_t>(bounds_budget_ - k) *
+                          bounds_n_locations_ +
+                      l]);
+  }
+
+  // as raptor::update_time_at_dest()
   __device__ void update_time_at_dest(unsigned const k, delta_t const t) {
+    auto relaxed = t;
+    if (relax_on_) {
+      auto const travel = static_cast<double>(dir(t - relax_origin_));
+      if (travel > 0.0) {
+        auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
+        auto const capped = extra < relax_floor_ ? relax_floor_
+                            : extra > relax_cap_ ? relax_cap_
+                                                 : extra;
+        relaxed = clamp(static_cast<int>(relax_origin_) +
+                        dir(static_cast<int>(::llround(travel + capped))));
+      }
+    }
     for (auto i = k; i != max_transfers_ + 1U; ++i) {
-      time_at_dest_.update_min(i, t);
+      time_at_dest_.update_min(i, relaxed);
     }
   }
 
   __device__ __forceinline__ int as_int(day_idx_t const d) const {
     return static_cast<int>(d.v_);
   }
+
+  // --- BM-RAPTOR (see bmrap_bounds.h) ---
+  // empty: not bound-pruned
+  cuda::std::span<delta_t const> bm_bounds_{};
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool has_bounds_{false};
+  // the starts' round (staggered runs)
+  std::uint8_t start_round_{0U};
+  // relaxed target pruning, see update_time_at_dest()
+  delta_t relax_origin_{0};
+  double relax_factor_{1.0};
+  double relax_floor_{0.0};
+  double relax_cap_{0.0};
+  int relax_add_{0};
+  bool relax_on_{false};
 
   std::uint32_t* any_marked_;
   std::uint32_t* done_;

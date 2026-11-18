@@ -10,10 +10,13 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
+
+struct CUstream_st;  // cudaStream_t
 
 namespace nigiri::routing::gpu {
 
@@ -21,22 +24,34 @@ namespace nigiri::routing::gpu {
 // rest falls back to the sequential scan
 inline constexpr auto kMcEtTaskMax = 1U << 22U;  // 4M: 210 MB of stop bags
 
-// Preallocated capacities; unset = sized from the timetable. Running out of
-// et task slots only slows a round down; a full stop bag, bag pool or
-// breadcrumb arena (or the sequential scan's route bag) fails the search, since
-// it would be lossy.
+// labels of one guide copy (take_guide(), one per direction), 6 bytes each
+inline constexpr auto kMcGuideLabels = 1U << 25U;  // 32M: 192 MB
+
+// Capacities, unset: sized from the timetable. Full et task slots slow a round
+// down, anything else full fails the search (it would be lossy).
 struct gpu_mcraptor_limits {
   std::uint32_t et_tasks_{kMcEtTaskMax};
   std::optional<std::uint32_t> bag_pool_blocks_{};
   std::optional<std::uint32_t> breadcrumbs_{};
+  std::uint32_t guide_labels_{kMcGuideLabels};
 };
 
-// scope as mcraptor_supported(); the subtypes only select the criteria
+// scratch and stream borrowed from the owning scalar state: both engines
+// rewrite the scratch every round, and on one stream never overlap
+struct gpu_mcraptor_scratch {
+  std::uint32_t* et_result_;
+  std::uint32_t* et_task_list_;
+  CUstream_st* stream_;
+};
+
+// scope as mcraptor_supported(); the subtypes only select kCrit
 struct gpu_mcraptor_state {
   using criteria_t = arr_criteria;
 
-  explicit gpu_mcraptor_state(gpu_timetable const&,
-                              gpu_mcraptor_limits const& = {});
+  explicit gpu_mcraptor_state(
+      gpu_timetable const&,
+      gpu_mcraptor_limits const& = {},
+      std::optional<gpu_mcraptor_scratch> const& = std::nullopt);
   ~gpu_mcraptor_state();
 
   struct impl;
@@ -70,8 +85,9 @@ struct gpu_mcraptor {
   using algo_state_t = gpu_mcraptor_state;
   using algo_stats_t = raptor_stats;
 
-  // unlike gpu raptor: without lb pruning the fixed-size device bags overflow
+  // without lb pruning the fixed-size bags overflow, unless bounded
   static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kNeedsLbWhenBounded = false;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
 
@@ -115,6 +131,18 @@ struct gpu_mcraptor {
 
   void reconstruct(query const&, journey&);
 
+  // Guided searches (bmrap_profile.cc): take_guide() copies this search's
+  // labels per stop into the state, one copy per direction; a later search of
+  // the other direction with set_guide() keeps only the labels that join one
+  // of them into one of `targets` (trips and criteria within, catchable at the
+  // stop). Empty targets, or more than the device buffer holds: not guided. A
+  // copy beyond gpu_mcraptor_limits::guide_labels_ fails the guided search.
+  void take_guide();
+  void set_guide(std::vector<journey const*> const& targets);
+
+  // device-built bounds, see basic_mcraptor::set_bounds()
+  void set_bounds(bmrap_bounds const*);
+
 private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
@@ -133,11 +161,13 @@ private:
   transfer_time_settings transfer_time_settings_;
   profile_idx_t prf_idx_;
 
-  // search-window bound; the device dest frontier owns destination pruning
-  delta_t worst_at_dest_;
+  delta_t worst_at_dest_;  // search window only
 
   mc_start start_;
   std::vector<std::pair<location_idx_t, unixtime_t>> starts_;
+
+  bmrap_bounds const* bounds_{nullptr};
+  std::uint32_t n_guide_targets_{0U};
 };
 
 }  // namespace nigiri::routing::gpu

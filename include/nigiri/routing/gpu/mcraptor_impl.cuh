@@ -123,6 +123,19 @@ struct mc_seed {
   std::uint16_t walk_;
 };
 
+// guided searches: mc_guide_entry, mc_guide_target (mc_criteria.h)
+inline constexpr auto kMcGuideTargetCap = 64U;
+
+// one copy (gpu_mcraptor_state::impl::guide_copy)
+struct mc_guide_copy {
+  mc_guide_entry* labels_;
+  std::uint32_t* begin_;  // n_locations
+  std::uint32_t* n_;  // n_locations, 0 = no label
+  std::uint32_t* count_;
+  std::uint32_t* overflow_;
+  std::uint32_t cap_;
+};
+
 // canary bits
 inline constexpr auto kMcOverflowBag = 1U;
 inline constexpr auto kMcOverflowArena = 2U;
@@ -378,8 +391,11 @@ struct mcraptor_impl {
     for (auto i = 0U; i != kMcDestCap; ++i) {
       auto const raw = dest_bag_[i];
       auto const v = mc_label::of(raw);
+      // strict: a tie survives (see basic_mcraptor::dest_dominates())
       if (raw != kMcEmptySlot && v.round_ <= round &&
-          completed_dominates(v.arr_key_, v.extras_, arr_key, extras)) {
+          completed_dominates(v.arr_key_, v.extras_, arr_key, extras) &&
+          !(round <= v.round_ &&
+            completed_dominates(arr_key, extras, v.arr_key_, v.extras_))) {
         return true;
       }
     }
@@ -509,6 +525,31 @@ struct mcraptor_impl {
     prev_station_mark_.swap_reset(station_mark_);
   }
 
+  // BM-RAPTOR bound pruning, see basic_mcraptor::bound_prunes(); `slack`
+  // relaxes the bound by a stop's transfer buffer for footpath arrivals.
+  __device__ __forceinline__ bool bound_prunes(unsigned const k,
+                                               std::uint32_t const l,
+                                               delta_t const t,
+                                               int const slack = 0) {
+    if (!has_bounds_) {
+      return false;
+    }
+    // the CURRENT start time's trip budget limits the rounds, the row depends
+    // on the matrix (see basic_mcraptor::bound_prunes())
+    auto const budget =
+        cur_budget_ < bounds_budget_ ? cur_budget_ : bounds_budget_;
+    if (k > budget) {
+      return true;
+    }
+    auto const row = bounds_staggered_ ? bounds_budget_ - k : budget - k;
+    return !is_better_or_eq(
+        t,
+        clamp(static_cast<int>(
+                  bounds_[static_cast<std::size_t>(row) * bounds_n_locations_ +
+                          l]) +
+              slack));
+  }
+
   // ---- route scan (CPU update_route) ---------------------------------------
 
   // a virt's (incl. rt virt's) stop, as rt::base()
@@ -556,7 +597,9 @@ struct mcraptor_impl {
       return false;
     }
     auto const ride_extras = crit_after_ride(carried, cl);
-    if (dest_dominates(k, ride_key + l_lb, ride_extras)) {
+    if (dest_dominates(k, ride_key + l_lb, ride_extras) ||
+        bound_prunes(k, l_idx, by_transport) ||
+        !guide_feasible(l_idx, k, by_transport, ride_extras)) {
       return false;
     }
     breadcrumb.arr_ = clamp(by_transport + transfer_buffer(l_idx));
@@ -1029,12 +1072,14 @@ struct mcraptor_impl {
     auto const lane = get_global_thread_id() % kWarpSize;
     auto const n_warps = get_global_stride() / kWarpSize;
     auto marked = false;
-    for (auto i = get_global_thread_id() / kWarpSize; i < tt_.n_routes_;
-         i += n_warps) {
+    // the marked routes as collected by et_build_route_list()
+    auto const n_marked = *route_list_count_;
+    for (auto idx = get_global_thread_id() / kWarpSize; idx < n_marked;
+         idx += n_warps) {
+      auto const i = route_list_[idx];
       auto const r = route_idx_t{i};
-      if (!route_mark_[i] ||
-          (WithClaszFilter &&
-           !is_allowed(allowed_claszes_, tt_.route_clasz_[r]))) {
+      if (WithClaszFilter &&
+          !is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
         continue;
       }
       // wheelchair: not accessible on any section -> skip, on some -> kill
@@ -1284,7 +1329,9 @@ struct mcraptor_impl {
       return;
     }
     auto const fp_extras = crit_after_walk(te_extras, walk);
-    if (dest_dominates(k, fp_key + target_lb, fp_extras)) {
+    if (dest_dominates(k, fp_key + target_lb, fp_extras) ||
+        bound_prunes(k, target, fp_arr, transfer_buffer(target)) ||
+        !guide_feasible(target, k, fp_arr, fp_extras)) {
       return;
     }
     auto const breadcrumb = walk_breadcrumb(te_breadcrumb, fp_arr);
@@ -1483,6 +1530,56 @@ struct mcraptor_impl {
     }
   }
 
+  // ---- guided searches (mc_guide_entry) ----------------------------------
+
+  // see routing::guide_feasible(); no targets = not guided
+  __device__ bool guide_feasible(std::uint32_t const l,
+                                 unsigned const k,
+                                 delta_t const t,
+                                 std::uint32_t const extras) const {
+    return guide_targets_.empty() ||
+           routing::guide_feasible<SearchDir, extras_t>(
+               cuda::std::span<mc_guide_entry const>{
+                   guide_.labels_ + guide_.begin_[l], guide_.n_[l]},
+               guide_targets_, k, t, extras,
+               adjusted_transfer_time(transfer_time_settings_,
+                                      transfer_time(l)));
+  }
+
+  // copies the bags of the touched stops (after this search ran); guide_.n_
+  // and guide_.count_ start at 0
+  __device__ void take_guide() {
+    for_each_touched(false, [&](std::uint32_t const l) {
+      auto bag = bag_slots(l);
+      auto n = 0U;
+      for (auto i = 0U; i != bag.size(); ++i) {
+        auto* const s = bag.slot(i);
+        n += (s != nullptr && *s != kMcEmptySlot) ? 1U : 0U;
+      }
+      if (n == 0U) {
+        return;
+      }
+      auto const from = atomicAdd(guide_.count_, n);
+      if (from + n > guide_.cap_) {
+        atomicOr(guide_.overflow_, 1U);
+        return;
+      }
+      auto w = from;
+      for (auto i = 0U; i != bag.size(); ++i) {
+        auto* const s = bag.slot(i);
+        if (s != nullptr && *s != kMcEmptySlot) {
+          auto const v = mc_label::of(*s);
+          guide_.labels_[w++] = {
+              .t_ = from_key(static_cast<std::uint32_t>(v.arr_key_)),
+              .round_ = static_cast<std::uint8_t>(v.round_),
+              .extras_ = static_cast<std::uint16_t>(v.extras_)};
+        }
+      }
+      guide_.begin_[l] = from;
+      guide_.n_[l] = n;
+    });
+  }
+
   // f(l) for every touched stop; `clear` resets the touched bits
   template <typename Fn>
   __device__ void for_each_touched(bool const clear, Fn&& f) {
@@ -1646,6 +1743,13 @@ struct mcraptor_impl {
   delta_t worst_at_dest_;
 
   cuda::std::span<mc_seed const> starts_;
+  // --- BM-RAPTOR (see bmrap_bounds.h) ---
+  cuda::std::span<delta_t const> bounds_{};
+  std::uint32_t bounds_n_locations_{0U};
+  std::uint8_t bounds_budget_{0U};
+  bool bounds_staggered_{false};  // see bmrap_bounds::staggered_
+  bool has_bounds_{false};
+  unsigned cur_budget_{0U};  // this start time's trip budget
 
   device_bitvec<std::uint64_t const> is_dest_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
@@ -1692,6 +1796,11 @@ struct mcraptor_impl {
   std::uint32_t* stop_bag_trips_;
   std::uint32_t* stop_bag_parents_;
   std::uint32_t* stop_bag_board_extras_;
+
+  // guided searches: the copy read (or, in take_guide(), written) and this
+  // search's targets (empty = not guided)
+  mc_guide_copy guide_;
+  cuda::std::span<mc_guide_target const> guide_targets_{};
 };
 
 #undef kFwd

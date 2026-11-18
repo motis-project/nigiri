@@ -321,7 +321,7 @@ static range_result search_range(timetable const& tt,
 
 #if defined(NIGIRI_CUDA)
   // no gpu_available() gate: a CUDA build without a device should fail
-  if (routing::gpu::is_gpu_supported(q, rtt)) {
+  if (routing::gpu::is_gpu_supported(q)) {  // rtt: uploaded below
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     if (rtt != nullptr) {
       // Re-upload every call: tests mutate rtt between searches.
@@ -487,7 +487,7 @@ pareto_set<routing::journey> search_pong(timetable const& tt,
   expect_no_virts(tt, rtt, results);
 
 #if defined(NIGIRI_CUDA)
-  if (routing::gpu::is_gpu_supported(q, rtt)) {
+  if (routing::gpu::is_gpu_supported(q)) {  // rtt: uploaded below
     auto gpu_search_state = routing::search_state{};
     auto gpu_timetable = routing::gpu::gpu_timetable{tt};
     auto gpu_state = routing::gpu::gpu_raptor_state{gpu_timetable};

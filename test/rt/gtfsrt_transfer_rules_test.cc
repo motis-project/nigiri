@@ -24,6 +24,7 @@
 #include "nigiri/routing/leg_alternatives.h"
 #include "nigiri/routing/one_to_all.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmraptor.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
@@ -1374,7 +1375,8 @@ TEST(gtfsrt_transfer_rules, banned_departure_keeps_walks_from_neighbours) {
 
 // The journeys from -> to (departing at hhmm) of mcraptor with the walking
 // criterion, on the CPU and, in CUDA builds, the GPU. test::raptor_search only
-// checks them against raptor's departure, arrival and transfers.
+// checks them against raptor's departure, arrival and transfers. BMRAPP the
+// same, departing within 10 min of hhmm (it hands a fixed time to mcraptor).
 std::vector<std::pair<char const*, pareto_set<routing::journey>>> walk_journeys(
     timetable const& tt,
     rt_timetable& rtt,
@@ -1389,13 +1391,26 @@ std::vector<std::pair<char const*, pareto_set<routing::journey>>> walk_journeys(
   };
   auto res =
       std::vector<std::pair<char const*, pareto_set<routing::journey>>>{};
+  auto qi = q;
+  qi.start_time_ = interval{at(hhmm), at(hhmm) + 10_minutes};
+  auto const bmrapp = [&](auto& algo_state) {
+    auto ss = routing::search_state{};
+    auto ms = routing::mcraptor_non_transit_state{};
+    return *routing::bmrap_profile_search(tt, &rtt, ss, algo_state, ms, qi,
+                                          direction::kForward)
+                .journeys_;
+  };
   auto cpu = routing::mcraptor_non_transit_state{};
   res.emplace_back("cpu", run(cpu));
+  auto cpu_bmrapp = routing::raptor_state{};
+  res.emplace_back("bmrapp", bmrapp(cpu_bmrapp));
 #if defined(NIGIRI_CUDA)
   rtt.gpu_rtt_.ptr_ = routing::gpu::make_gpu_rtt(tt, rtt);
   auto const gtt = routing::gpu::gpu_timetable{tt};
   auto gpu = routing::gpu::gpu_mcraptor_non_transit_state{gtt};
   res.emplace_back("gpu", run(gpu));
+  auto gpu_bmrapp = routing::gpu::gpu_raptor_state{gtt};
+  res.emplace_back("gpu bmrapp", bmrapp(gpu_bmrapp));
 #endif
   return res;
 }
