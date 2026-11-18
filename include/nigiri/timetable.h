@@ -129,6 +129,7 @@ struct timetable {
     vector_map<location_idx_t, translation_idx_t> platform_codes_;
     vector_map<location_idx_t, translation_idx_t> stop_codes_;
     vector_map<location_idx_t, translation_idx_t> descriptions_;
+    vector_map<location_idx_t, wikidata_id> wikidata_;
     vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
     vector_map<location_idx_t, source_idx_t> src_;
@@ -359,6 +360,7 @@ struct timetable {
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
     vector_map<route_id_idx_t, route_color> route_id_colors_;
     vector_map<route_id_idx_t, ticketing_link_idx_t> route_id_ticketing_link_;
+    vector_map<route_id_idx_t, wikidata_id> route_id_wikidata_;
     vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };
@@ -528,6 +530,9 @@ struct timetable {
   sparse_vecvec<translation_idx_t, language_idx_t> translation_language_{
       decltype(translation_language_)::with_default({kDefaultLang})};
   string_store<language_idx_t> languages_;
+
+  // Wikibase base URLs, index 0 is Wikidata (kWikidataBaseUrl).
+  vecvec<wikibase_idx_t, char> wikibase_urls_;
 
   cista::base_t<source_idx_t> n_sources_{};
 

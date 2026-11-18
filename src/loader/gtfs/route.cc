@@ -12,6 +12,7 @@
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+#include "nigiri/wikidata.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -167,6 +168,7 @@ route_map_t read_routes(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("route_color")> route_color_;
     utl::csv_col<utl::cstr, UTL_NAME("route_text_color")> route_text_color_;
     utl::csv_col<utl::cstr, UTL_NAME("network_id")> network_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("wikidata")> wikidata_;
     // Google Transit Ticketing extension
     utl::csv_col<utl::cstr, UTL_NAME("ticketing_deep_link_id")>
         ticketing_deep_link_id_;
@@ -221,6 +223,7 @@ route_map_t read_routes(source_idx_t const src,
               category_idx_t::invalid(),
               ticketing_link_idx_t::invalid(),
           };
+          x.wikidata_ = parse_wikidata_id(tt, r.wikidata_->view());
           if (process_route(user_script, x)) {
             map.emplace(r.route_id_->to_str(),
                         std::make_unique<route>(route{

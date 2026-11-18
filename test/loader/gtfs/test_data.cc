@@ -89,7 +89,7 @@ loader::mem_dir example_files() {
   return {
       {{path{kAgencyFile}, std::string{example_agency_file_content}},
        {path{kStopFile}, std::string{example_stops_file_content}},
-       {path{kCalenderFile}, std::string{example_calendar_file_content}},
+       {path{kCalendarFile}, std::string{example_calendar_file_content}},
        {path{kCalendarDatesFile},
         std::string{example_calendar_dates_file_content}},
        {path{kTransfersFile}, std::string{example_transfers_file_content}},
@@ -179,7 +179,7 @@ loader::mem_dir berlin_files() {
   using std::filesystem::path;
   return {{{path{kAgencyFile}, std::string{berlin_agencies_file_content}},
            {path{kStopFile}, std::string{berlin_stops_file_content}},
-           {path{kCalenderFile}, std::string{berlin_calendar_file_content}},
+           {path{kCalendarFile}, std::string{berlin_calendar_file_content}},
            {path{kCalendarDatesFile},
             std::string{berlin_calendar_dates_file_content}},
            {path{kTransfersFile}, std::string{berlin_transfers_file_content}},

@@ -164,7 +164,8 @@ trip_data read_trips(
     std::array<bool, kNumClasses> const& bikes_allowed_default,
     std::array<bool, kNumClasses> const& cars_allowed_default,
     std::array<bool, kNumClasses> const& reservation_not_required_default,
-    script_runner const& = script_runner{});
+    script_runner const& = script_runner{},
+    bitfield const* unknown_service = nullptr);
 
 void read_frequencies(trip_data&, std::string_view);
 

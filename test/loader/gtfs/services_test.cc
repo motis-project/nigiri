@@ -40,7 +40,7 @@ TEST(gtfs, service_dates) {
   auto const i = interval<date::sys_days>{July / 1 / 2006, August / 1 / 2006};
   auto dates =
       read_calendar_date(example_files().get_file(kCalendarDatesFile).data());
-  auto calendar = read_calendar(example_files().get_file(kCalenderFile).data());
+  auto calendar = read_calendar(example_files().get_file(kCalendarFile).data());
   auto traffic_days = merge_traffic_days(i, calendar, dates);
 
   auto we_bit_str = std::string{"1111000110000011000001100000110"};

@@ -11,7 +11,7 @@ using namespace date;
 
 TEST(gtfs, calendar) {
   auto const calendar =
-      read_calendar(example_files().get_file(kCalenderFile).data());
+      read_calendar(example_files().get_file(kCalendarFile).data());
 
   EXPECT_EQ(2, calendar.size());
 

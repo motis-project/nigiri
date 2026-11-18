@@ -7,6 +7,7 @@
 
 #include "nigiri/loader/register.h"
 #include "nigiri/timetable.h"
+#include "nigiri/wikidata.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -24,6 +25,7 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
     utl::csv_col<utl::cstr, UTL_NAME("agency_url")> url_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_timezone")> tz_name_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_fare_url")> fare_url_;
+    utl::csv_col<utl::cstr, UTL_NAME("wikidata")> wikidata_;
     // Google Transit Ticketing extension
     utl::csv_col<utl::cstr, UTL_NAME("ticketing_deep_link_id")>
         ticketing_deep_link_id;
@@ -46,6 +48,8 @@ std::pair<agency_map_t, agency_ticketing_map_t> read_agencies(
             tt, timezones,
             a.tz_name_->view().empty() ? default_tz : a.tz_name_->view()),
         timezones};
+    x.wikidata_ = parse_wikidata_id(
+        tt, a.wikidata_->view().empty() ? a.id_->view() : a.wikidata_->view());
     auto const provider_idx = process_agency(r, x) ? register_agency(tt, x)
                                                    : provider_idx_t::invalid();
     map.emplace(a.id_->view(), provider_idx);

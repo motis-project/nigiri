@@ -18,6 +18,7 @@
 #include "geo/latlng.h"
 #include "geo/point_rtree.h"
 
+#include "nigiri/loader/enrich_metadata.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -25,6 +26,16 @@
 namespace nigiri::loader {
 
 constexpr auto const kEqDist = 600.0;  // [m]
+
+bool roots_match(vecvec<location_idx_t, location_idx_t> const& neighbours,
+                 location_idx_t const a,
+                 location_idx_t const b) {
+  if (a == b) {
+    return true;
+  }
+  auto const nb = neighbours[a];
+  return std::binary_search(begin(nb), end(nb), b);
+}
 
 bool is_duplicate(timetable const& tt,
                   import_context const& ctx,
@@ -151,13 +162,15 @@ void merge_route_pair(timetable& tt,
                       stop_idx_t const n_stops,
                       duration_t const threshold,
                       vector_map<transport_idx_t, bitfield_idx_t> const& before,
-                      merge_stats& stats) {
+                      merge_stats& stats,
+                      metadata_enricher& enricher) {
   auto const budget = static_cast<int>(2U * (n_stops - 1U)) * threshold.count();
   auto const a_range = tt.route_transport_ranges_[a_route];
   auto const b_range = tt.route_transport_ranges_[b_route];
   auto const a_dep = get_stop_times(tt, ctx, a_route, 0U, event_type::kDep);
   auto const b_dep = get_stop_times(tt, ctx, b_route, 0U, event_type::kDep);
   auto const is_reflexive = a_route == b_route;
+  auto const n_merges_before = stats.n_merges_;
 
   auto b_first = std::size_t{0U};
   for (auto ai = std::size_t{0U}; ai != a_dep.size(); ++ai) {
@@ -195,6 +208,11 @@ void merge_route_pair(timetable& tt,
       }
 
       auto const absorbed = merge(tt, ctx, a_t, b_t);
+      if (absorbed == a_t) {
+        enricher.add_transport(b_t, a_t);
+      } else {
+        enricher.add_transport(a_t, b_t);
+      }
 
       ++stats.n_merges_;
       if (absorbed != transport_idx_t::invalid()) {
@@ -203,6 +221,15 @@ void merge_route_pair(timetable& tt,
         ++stats.provider_n_absorbed_transports_[p];
         ++stats.src_n_absorbed_transports_[tt.providers_[p].src_];
       }
+    }
+  }
+
+  if (stats.n_merges_ != n_merges_before) {
+    for (auto i = stop_idx_t{0U}; i != n_stops; ++i) {
+      auto const a = stop{tt.route_location_seq_[a_route][i]}.location_idx();
+      auto const b = stop{tt.route_location_seq_[b_route][i]}.location_idx();
+      enricher.add_stop(a, b);
+      enricher.add_stop(b, a);
     }
   }
 }
@@ -215,6 +242,7 @@ void merge_duplicates(timetable& tt,
                       std::filesystem::path const& stats_dir,
                       vector_map<source_idx_t, std::string> const& src_tags) {
   auto stats = merge_stats{tt};
+  auto enricher = metadata_enricher{.tt_ = tt};
 
   // Duplicate detection reports on the input, not on the half-merged state.
   auto const traffic_days_before = tt.transport_traffic_days_;
@@ -241,6 +269,12 @@ void merge_duplicates(timetable& tt,
       auto const root =
           tt.locations_.get_root_idx(stop{seq.front()}.location_idx());
       if (tt.locations_.src_[root] == source_idx_t::invalid()) {
+        continue;
+      }
+
+      if (std::ranges::find(ctx.metadata_only_sources_,
+                            tt.locations_.src_[root]) !=
+          end(ctx.metadata_only_sources_)) {
         continue;
       }
 
@@ -322,14 +356,7 @@ void merge_duplicates(timetable& tt,
       auto const ra = tt.locations_.get_root_idx(stop{sa[i]}.location_idx());
       auto const rb = tt.locations_.get_root_idx(stop{sb[i]}.location_idx());
 
-      // Check exact match.
-      if (ra == rb) {
-        continue;
-      }
-
-      // Neighbor match.
-      auto const nb = neighbours[ra];
-      if (!std::binary_search(begin(nb), end(nb), rb)) {
+      if (!roots_match(neighbours, ra, rb)) {
         return false;  // mismatch -> early exit
       }
     }
@@ -411,7 +438,7 @@ void merge_duplicates(timetable& tt,
             clasz_threshold[static_cast<unsigned>(tt.route_clasz_[a_route])],
             clasz_threshold[static_cast<unsigned>(tt.route_clasz_[b_route])]);
         merge_route_pair(tt, ctx, a_route, b_route, a.n_stops_, threshold,
-                         traffic_days_before, stats);
+                         traffic_days_before, stats, enricher);
       }
     }
   };
@@ -429,6 +456,9 @@ void merge_duplicates(timetable& tt,
       }
     }
   }
+
+  match_metadata_routes(tt, ctx, neighbours, enricher);
+  enricher.apply();
 
   stats.provider_overlap_.finish(stats.provider_n_transports_.size());
   stats.src_overlap_.finish(stats.src_n_transports_.size());

@@ -65,6 +65,7 @@ struct agency {
   translation_idx_t url_;
   translation_idx_t fare_url_;
   timezone_idx_t timezone_idx_;
+  wikidata_id wikidata_{};
 
   timetable* tt_{nullptr};
   hash_map<std::string, timezone_idx_t>* tz_map_{nullptr};
@@ -125,6 +126,7 @@ struct location {
   location_idx_t parent_{location_idx_t::invalid()};
   timezone_idx_t timezone_idx_{timezone_idx_t::invalid()};
   duration_t transfer_time_{0};
+  wikidata_id wikidata_{};
 
   timetable* tt_{nullptr};
   gtfs::tz_map* tz_map_{nullptr};
@@ -182,6 +184,7 @@ struct route {
   provider_idx_t agency_;
   category_idx_t category_;
   ticketing_link_idx_t ticketing_link_;
+  wikidata_id wikidata_{};
 
   timetable* tt_{nullptr};
 };

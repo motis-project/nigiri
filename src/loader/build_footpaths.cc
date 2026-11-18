@@ -134,7 +134,8 @@ void build_footpaths(timetable& tt,
     add_transitive_walks(tt, walks, opt.max_footpath_length_);
   }
 
-  if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
+  if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_ ||
+      !ctx.metadata_only_sources_.empty()) {
     merge_duplicates(tt, ctx, opt.merge_threshold_, opt.merge_dupes_intra_src_,
                      opt.merge_dupes_inter_src_, opt.merge_stats_dir_,
                      opt.src_tags_);
