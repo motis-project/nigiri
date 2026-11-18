@@ -97,12 +97,6 @@ TEST(dir, in_memory_zip) {
   EXPECT_EQ(zip.get_file("stamm/bahnhof.101").data(), std::string_view{data});
 }
 
-// zstd fixture generation (minizip-ng 4.2.2 CLI):
-//   printf '<data as above>\n' > stamm/bahnhof.101 && printf '0000001E\n0000002E\n' > stamm/zugart_int.101
-//   minizip -9 -t -i <fixture> stamm
-// (-t selects MZ_COMPRESS_METHOD_ZSTD, -i keeps the stamm/ prefixes, adding
-// the top-level directory also creates the stamm/ directory entry required
-// by zip_dir::list_files.)
 TEST(dir, zstd) {
   constexpr auto const zugart = std::string_view{"0000001E\n0000002E\n"};
 
