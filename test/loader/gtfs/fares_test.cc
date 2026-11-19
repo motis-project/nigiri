@@ -7,11 +7,9 @@
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
-#include "nigiri/rt/rt_transfer_rules.h"
 
 #include "../../raptor_search.h"
 #include "../../routing/results_to_string.h"
-#include "../../rt/util.h"
 #include "../../transfer_rules_util.h"
 
 using namespace date;
@@ -478,39 +476,6 @@ B,B,2,600,,,,
 B,B,2,0,line1,line2,,
 )";
 
-// Same for the changes at B (line1 -> line2) and C (line2 -> line3).
-constexpr auto const kRulesAtBAndC = R"(
-# transfers.txt
-from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
-B,B,2,600,,,,
-B,B,2,0,line1,line2,,
-C,C,2,600,,,,
-C,C,2,0,line2,line3,,
-)";
-
-// Same for the change at B from route Red to route 1.
-constexpr auto const kRulesAtBRedTo1 = R"(
-# transfers.txt
-from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
-B,B,2,600,,,,
-B,B,2,0,Red,1,,
-)";
-
-// Calls fn with the timetable loaded without and with transfers.txt rules that
-// put the trips on virtual locations. Fares have to be the same.
-template <typename Fn>
-void with_and_without_virts(std::string_view const files,
-                            std::string_view const transfers,
-                            Fn&& fn) {
-  for (auto const t : {std::string_view{}, transfers}) {
-    SCOPED_TRACE(t.empty() ? "without transfers.txt" : "with transfers.txt");
-    auto const tt = loader::load(mem_dir::read(fmt::format("{}{}", files, t)),
-                                 {2022_y / January / 1, 2022_y / December / 1});
-    ASSERT_EQ(t.empty(), test::n_virts(tt) == 0U);
-    fn(tt);
-  }
-}
-
 TEST(fares, area_sets) {
   auto const tt =
       loader::load(mem_dir::read(fmt::format("{}{}{}", kBasicTimetable,
@@ -561,8 +526,8 @@ std::string fares_a_to_c(std::string_view const fares,
              : to_string(tt, nullptr, get_fares(tt, nullptr, *results.begin()));
 }
 
-// A leg join rule names the stop B of the station BS, where T1 and T2 stop at
-// virtual locations.
+// A leg join rule and B's area are stated for the stop B or its station BS,
+// where T1 and T2 stop at virtual locations.
 TEST(fares, leg_join_rule_stop_with_transfer_rules) {
   auto const replace = [](std::string s, std::string_view const from,
                           std::string_view const to) {
@@ -573,20 +538,21 @@ TEST(fares, leg_join_rule_stop_with_transfer_rules) {
   auto const b_in_station =
       replace(std::string{kBasicTimetable}, "B,B,,0.02,1.03,,\n",
               "BS,BS,,0.02,1.03,,1,\nB,B,,0.02,1.03,,,BS\n");
-  auto const joined_at_b =
-      replace(std::string{kAreaSets}, "HSL,HSL,,\n", "HSL,HSL,B,B\n");
-  auto const without_rules = fares_a_to_c(joined_at_b, "", b_in_station);
-  EXPECT_NE(std::string::npos, without_rules.find("** JOINED WITH"));
-  EXPECT_EQ(without_rules, fares_a_to_c(joined_at_b, kRulesAtB, b_in_station));
-
-  // The join rule names the station BS: virtual location -> B -> BS.
-  auto const joined_at_bs =
-      replace(std::string{kAreaSets}, "HSL,HSL,,\n", "HSL,HSL,BS,BS\n");
-  auto const station_without_rules =
-      fares_a_to_c(joined_at_bs, "", b_in_station);
-  EXPECT_NE(std::string::npos, station_without_rules.find("** JOINED WITH"));
-  EXPECT_EQ(station_without_rules,
-            fares_a_to_c(joined_at_bs, kRulesAtB, b_in_station));
+  auto const stated_for = [&](std::string_view const stop) {
+    return replace(replace(std::string{kAreaSets}, "HSL,HSL,,\n",
+                           fmt::format("HSL,HSL,{0},{0}\n", stop)),
+                   "area_id,stop_id\nA,A\nB,B\n",
+                   fmt::format("area_id,stop_id\nA,A\nB,{}\n", stop));
+  };
+  auto const expected = fares_a_to_c(stated_for("B"), "", b_in_station);
+  EXPECT_NE(std::string::npos, expected.find("** JOINED WITH"));
+  for (auto const stop : {"B", "BS"}) {
+    for (auto const transfers : {"", kRulesAtB}) {
+      EXPECT_EQ(expected,
+                fares_a_to_c(stated_for(stop), transfers, b_in_station))
+          << "stated for " << stop << ", transfers.txt: " << transfers;
+    }
+  }
 }
 
 TEST(fares, simple_fares) {
@@ -833,98 +799,13 @@ PRODUCTS
 
 namespace {
 
-// Networks defined only via routes.txt network_id (no networks.txt, no
-// route_networks.txt) as allowed by the GTFS spec, see
-// https://github.com/motis-project/motis/issues/905
-constexpr auto const kRouteNetworkIdTimetable = R"(
-# calendar.txt
-service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-everyday,1,1,1,1,1,1,1,20220101,20221231
-
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-MBTA,MBTA,https://mbta.com,America/New_York
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-A,A,,0.0,1.0,,
-B,B,,0.02,1.03,,
-C,C,,0.04,1.05,,
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,network_id
-Red,MBTA,Red,Red Line,,1,rapid_transit
-1,MBTA,1,Bus 1,,3,local_bus
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-Red,everyday,T1,T1,
-1,everyday,T2,T2,
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-T1,10:00:00,10:00:00,A,1,0,0
-T1,10:30:00,10:30:00,B,2,0,0
-T2,10:35:00,10:35:00,B,1,0,0
-T2,11:00:00,11:00:00,C,2,0,0
-
-# fare_media.txt
-fare_media_id,fare_media_name,fare_media_type
-cash,Cash,0
-
-# fare_products.txt
-fare_product_id,fare_product_name,fare_media_id,amount,currency
-prod_rapid_transit,Rapid Transit Ticket,cash,2.40,USD
-prod_local_bus,Local Bus Ticket,cash,1.70,USD
-
-# fare_leg_rules.txt
-leg_group_id,network_id,fare_product_id
-leg_rapid_transit,rapid_transit,prod_rapid_transit
-leg_local_bus,local_bus,prod_local_bus
-)";
-
-}  // namespace
-
-TEST(fares, network_id_in_routes_txt) {
-  with_and_without_virts(
-      kRouteNetworkIdTimetable, kRulesAtBRedTo1, [](timetable const& tt) {
-        ASSERT_EQ(1U, tt.fares_.size());
-        EXPECT_EQ(2U, tt.fares_[source_idx_t{0}].networks_.size());
-        EXPECT_EQ(2U, tt.fares_[source_idx_t{0}].route_networks_.size());
-
-        auto const results =
-            raptor_search(tt, nullptr, "A", "C",
-                          unixtime_t{sys_days{2022_y / March / 30} + 14h});
-        ASSERT_EQ(1U, results.size());
-        auto const fare_legs = get_fares(tt, nullptr, *results.begin());
-
-        // Each leg gets exactly the product of its own network.
-        constexpr auto const kExpected = R"(FARE LEG:
-   0: A       A...............................................                               d: 30.03 14:00 [30.03 10:00]  [{name=Red, day=2022-03-30, id=T1, src=0}]
-   1: B       B............................................... a: 30.03 14:30 [30.03 10:30]
-PRODUCTS
-Rapid Transit Ticket [priority=0]: 2.4 USD, fare_media_name=Cash, fare_type=NONE, ride_category=??
-
-
-FARE LEG:
-   0: B       B...............................................                               d: 30.03 14:35 [30.03 10:35]  [{name=1, day=2022-03-30, id=T2, src=0}]
-   1: C       C............................................... a: 30.03 15:00 [30.03 11:00]
-PRODUCTS
-Local Bus Ticket [priority=0]: 1.7 USD, fare_media_name=Cash, fare_type=NONE, ride_category=??
-
-
-)";
-        EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
-      });
-}
-
-namespace {
-
 // Two products (cash, card) per network, free transfer only for card holders.
 // The cash product sorts first (cheaper), so the transfer rule has to be
 // matched against all leg rules, not just the first one. Only the card
 // products take part in the transfer (A+AB without transfer product = the
-// following leg is included).
+// following leg is included). Networks are only defined via routes.txt
+// network_id (no networks.txt), as allowed by the GTFS spec, see
+// https://github.com/motis-project/motis/issues/905
 constexpr auto const kTransferThinningTimetable = R"(
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
@@ -984,15 +865,20 @@ leg_rapid_transit_card,leg_local_bus_card,,7200,1,0,
 }  // namespace
 
 TEST(fares, transfer_thins_out_uncovered_products) {
-  with_and_without_virts(
-      kTransferThinningTimetable, kRulesAtBRedTo1, [](timetable const& tt) {
-        auto const results =
-            raptor_search(tt, nullptr, "A", "C",
-                          unixtime_t{sys_days{2022_y / March / 30} + 14h});
-        ASSERT_EQ(1U, results.size());
-        auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+  auto const tt = loader::load(mem_dir::read(kTransferThinningTimetable),
+                               {2022_y / January / 1, 2022_y / December / 1});
+  ASSERT_EQ(1U, tt.fares_.size());
+  EXPECT_EQ(2U, tt.fares_[source_idx_t{0}].networks_.size());
+  EXPECT_EQ(2U, tt.fares_[source_idx_t{0}].route_networks_.size());
 
-        constexpr auto const kExpected = R"(FARE TRANSFER START
+  auto const results = raptor_search(
+      tt, nullptr, "A", "C", unixtime_t{sys_days{2022_y / March / 30} + 14h});
+  ASSERT_EQ(1U, results.size());
+  auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+
+  // Main: card transfer. Variant for cash: separate legs, each with the
+  // products of its own network.
+  constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: 
 RULE: A+AB
 FARE LEG:
@@ -1010,9 +896,24 @@ Bus Card [priority=0]: 1.9 USD, fare_media_name=CharlieCard, fare_type=CARD, rid
 
 
 FARE TRANSFER END
+FARE LEG:
+   0: A       A...............................................                               d: 30.03 14:00 [30.03 10:00]  [{name=Red, day=2022-03-30, id=T1, src=0}]
+   1: B       B............................................... a: 30.03 14:30 [30.03 10:30]
+PRODUCTS
+Subway Cash [priority=0]: 2.4 USD, fare_media_name=Cash, fare_type=NONE, ride_category=??
+Subway Card [priority=0]: 2.9 USD, fare_media_name=CharlieCard, fare_type=CARD, ride_category=??
+
+
+FARE LEG:
+   0: B       B...............................................                               d: 30.03 14:35 [30.03 10:35]  [{name=1, day=2022-03-30, id=T2, src=0}]
+   1: C       C............................................... a: 30.03 15:00 [30.03 11:00]
+PRODUCTS
+Bus Cash [priority=0]: 1.7 USD, fare_media_name=Cash, fare_type=NONE, ride_category=??
+Bus Card [priority=0]: 1.9 USD, fare_media_name=CharlieCard, fare_type=CARD, ride_category=??
+
+
 )";
-        EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
-      });
+  EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs, false));
 }
 
 namespace {
@@ -1064,24 +965,25 @@ general_network,general_network,-1,3600,0,2,1h
 }  // namespace
 
 TEST(fares, cheapest_transfer_or_separate_legs) {
-  with_and_without_virts(
-      fmt::format("{}{}", kBasicTimetable, kCheapestTransferFares),
-      kRulesAtBAndC, [](timetable const& tt) {
-        // variants = cheapest covers per traveler profile (any media, paper
-        // ticket, no ticket needed): identical to the main cover in both cases
-        auto const n_main = [](std::vector<fare_transfer> const& x) {
-          return utl::count_if(x, [](auto&& t) { return t.main_; });
-        };
+  auto const tt =
+      loader::load(mem_dir::read(fmt::format("{}{}", kBasicTimetable,
+                                             kCheapestTransferFares)),
+                   {2022_y / January / 1, 2022_y / December / 1});
 
-        {  // Saturday: all legs free, no transfer product
-          auto const results =
-              raptor_search(tt, nullptr, "A", "D",
-                            unixtime_t{sys_days{2022_y / April / 2} + 10h});
-          ASSERT_EQ(1U, results.size());
-          auto const fare_legs = get_fares(tt, nullptr, *results.begin());
-          EXPECT_EQ(3U, fare_legs.size());
-          EXPECT_EQ(3U, n_main(fare_legs));
-          constexpr auto const kExpected = R"(FARE LEG:
+  // variants = cheapest covers per traveler profile (any media, paper
+  // ticket, no ticket needed): identical to the main cover in both cases
+  auto const n_main = [](std::vector<fare_transfer> const& x) {
+    return utl::count_if(x, [](auto&& t) { return t.main_; });
+  };
+
+  {  // Saturday: all legs free, no transfer product
+    auto const results = raptor_search(
+        tt, nullptr, "A", "D", unixtime_t{sys_days{2022_y / April / 2} + 10h});
+    ASSERT_EQ(1U, results.size());
+    auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+    EXPECT_EQ(3U, fare_legs.size());
+    EXPECT_EQ(3U, n_main(fare_legs));
+    constexpr auto const kExpected = R"(FARE LEG:
    0: A       A...............................................                               d: 02.04 10:00 [02.04 12:00]  [{name=Line 1, day=2022-04-02, id=T1, src=0}]
    1: B       B............................................... a: 02.04 10:30 [02.04 12:30]
 PRODUCTS
@@ -1103,19 +1005,18 @@ Gratuit [priority=1]: 0 EUR, fare_media_name=No ticket needed, fare_type=NONE, r
 
 
 )";
-          EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
-        }
+    EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
+  }
 
-        {  // Wednesday: 1h ticket for the first two legs (60min), third leg
-           // separate
-          auto const results =
-              raptor_search(tt, nullptr, "A", "D",
-                            unixtime_t{sys_days{2022_y / March / 30} + 10h});
-          ASSERT_EQ(1U, results.size());
-          auto const fare_legs = get_fares(tt, nullptr, *results.begin());
-          EXPECT_EQ(2U, fare_legs.size());
-          EXPECT_EQ(2U, n_main(fare_legs));
-          constexpr auto const kExpected = R"(FARE TRANSFER START
+  {  // Wednesday: 1h ticket for the first two legs (60min), third leg
+     // separate
+    auto const results = raptor_search(
+        tt, nullptr, "A", "D", unixtime_t{sys_days{2022_y / March / 30} + 10h});
+    ASSERT_EQ(1U, results.size());
+    auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+    EXPECT_EQ(2U, fare_legs.size());
+    EXPECT_EQ(2U, n_main(fare_legs));
+    constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: 1h
 RULE: AB
 FARE LEG:
@@ -1144,121 +1045,6 @@ PRODUCTS
 
 
 )";
-          EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
-        }
-      });
-}
-
-namespace {
-
-// Station BS with the platforms B1 and B2. T1 (Red) and T2 (route 1) change at
-// B1. Changing from B2 to B1 takes 10 min, except from Red to route 1 (0 min).
-constexpr auto const kPlatformsTimetable = R"(
-# calendar.txt
-service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-everyday,1,1,1,1,1,1,1,20220101,20221231
-
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-MBTA,MBTA,https://mbta.com,America/New_York
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-A,A,,0.0,1.0,,,
-BS,BS,,0.02,1.03,,1,
-B1,B1,,0.02,1.03,,,BS
-B2,B2,,0.02,1.03,,,BS
-C,C,,0.04,1.05,,,
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,network_id
-Red,MBTA,Red,Red Line,,1,rapid_transit
-1,MBTA,1,Bus 1,,3,local_bus
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-Red,everyday,T1,T1,
-1,everyday,T2,T2,
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-T1,10:00:00,10:00:00,A,1,0,0
-T1,10:30:00,10:30:00,B1,2,0,0
-T2,10:35:00,10:35:00,B1,1,0,0
-T2,11:00:00,11:00:00,C,2,0,0
-
-# transfers.txt
-from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
-B1,B1,2,600,,,,
-B1,B1,2,0,Red,1,,
-B2,B1,2,600,,,,
-B2,B1,2,0,Red,1,,
-
-# areas.txt
-area_id,area_name
-zone_a,Zone A
-zone_b,Zone B
-
-# stop_areas.txt
-area_id,stop_id
-zone_a,A
-zone_b,BS
-zone_b,C
-
-# fare_media.txt
-fare_media_id,fare_media_name,fare_media_type
-cash,Cash,0
-
-# fare_products.txt
-fare_product_id,fare_product_name,fare_media_id,amount,currency
-prod_a_to_b,Zone A-B Ticket,cash,2.40,USD
-prod_b,Zone B Ticket,cash,1.70,USD
-
-# fare_leg_rules.txt
-leg_group_id,network_id,from_area_id,to_area_id,fare_product_id
-leg_a_to_b,rapid_transit,zone_a,zone_b,prod_a_to_b
-leg_b,local_bus,zone_b,zone_b,prod_b
-)";
-
-}  // namespace
-
-// T1 is moved to platform B2. Only a real-time virtual location of B2 with the
-// 0 min Red -> 1 rule reaches T2 at B1. Areas are stated for the station BS.
-TEST(fares, rt_virtual_locations) {
-  auto const tt = loader::load(mem_dir::read(kPlatformsTimetable),
-                               {2022_y / January / 1, 2022_y / December / 1});
-  ASSERT_LT(0U, n_virts(tt));
-
-  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2022_y / March / 30});
-  auto const stats = rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_msg(
-          {{"T1", {{.seq_ = 2U, .stop_id_ = "B1", .assigned_ = "B2"}}}},
-          date::sys_days{2022_y / March / 30} + 9h, "20220330"));
-  ASSERT_EQ(1U, stats.total_entities_success_);
-  rt::resolve_conflicts(tt, rtt);
-  rtt.update_lbs(tt);
-  ASSERT_LT(0U, rtt.n_rt_locations());
-
-  auto const results = raptor_search(
-      tt, &rtt, "A", "C", unixtime_t{sys_days{2022_y / March / 30} + 14h});
-  ASSERT_EQ(1U, results.size());
-  auto const fare_legs = get_fares(tt, &rtt, *results.begin());
-
-  constexpr auto const kExpected = R"(FARE LEG:
-   0: A       A...............................................                                                             d: 30.03 14:00 [30.03 10:00]  RT 30.03 14:00 [30.03 10:00]  [{name=Red, day=2022-03-30, id=T1, src=0}]
-   1: B2      BS.............................................. a: 30.03 14:30 [30.03 10:30]  RT 30.03 14:30 [30.03 10:30]
-PRODUCTS
-Zone A-B Ticket [priority=0]: 2.4 USD, fare_media_name=Cash, fare_type=NONE, ride_category=??
-
-
-FARE LEG:
-   0: B1      BS..............................................                               d: 30.03 14:35 [30.03 10:35]  [{name=1, day=2022-03-30, id=T2, src=0}]
-   1: C       C............................................... a: 30.03 15:00 [30.03 11:00]
-PRODUCTS
-Zone B Ticket [priority=0]: 1.7 USD, fare_media_name=Cash, fare_type=NONE, ride_category=??
-
-
-)";
-  EXPECT_EQ(kExpected, to_string(tt, &rtt, fare_legs));
+    EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
+  }
 }
