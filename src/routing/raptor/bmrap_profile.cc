@@ -361,13 +361,14 @@ routing_result bmrap_profile(
     }
   };
   auto n_mc_pong_skipped = std::uint64_t{0U};
+  auto n_pong_missing = std::uint64_t{0U};
 
   auto anchors = std::vector<anchor>{};
   auto max_trips = std::uint8_t{0U};
   auto budget = std::uint8_t{0U};
   auto anchors_valid_until = std::optional<unixtime_t>{};
   auto n_anchor_recomputes = std::uint64_t{0U};
-  auto exit_reason = std::uint64_t{0U};  // 0=cond 2=anchors 3=stall
+  auto exit_reason = std::uint64_t{0U};  // 0=cond 2=anchors
 
   // In the scan, results have the mc pong's convention (dest_time_ = departure,
   // start_time_ = arrival). The restriction applies when counting, not on
@@ -488,6 +489,18 @@ routing_result bmrap_profile(
                   ->start_time_;
           seed_bwd(pong, arr);
           pong.execute(arr, max_tr, all_rounds(loosest - kDir), tight);
+          // Each ping journey has its latest departure (pong_search throws).
+          // A miss only costs this step its anchor: log and count it.
+          for (auto it = first; it != last; ++it) {
+            if (utl::none_of(tight, [&](journey const& t) {
+                  return t.transfers_ == it->transfers_ && t.start_time_ == arr;
+                })) {
+              ++n_pong_missing;
+              log(log_lvl::error, "bmrap_profile",
+                  "no pong for transfers={}, start_time={} found",
+                  it->transfers_, arr);
+            }
+          }
         });
         sw.lap(ms_pong);
 
@@ -650,8 +663,8 @@ routing_result bmrap_profile(
     }
     auto const next = loosest_dep.value_or(start_time) + kDir;
     if (!is_better(start_time, next)) {
-      exit_reason = 3U;
-      break;
+      throw utl::fail("no bmrapp progress: start_time={}, next={}", start_time,
+                      next);
     }
     start_time = next;
   }
@@ -758,6 +771,7 @@ routing_result bmrap_profile(
   algo_stats["bmrapp_aligned"] = aligned ? 1U : 0U;
   algo_stats["bmrapp_ms_range"] = ms(ms_range);
   algo_stats["bmrapp_mc_pong_skipped"] = n_mc_pong_skipped;
+  algo_stats["bmrapp_pong_missing"] = n_pong_missing;
 
   return routing_result{
       .journeys_ = &s_state.results_,
