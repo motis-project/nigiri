@@ -171,10 +171,10 @@ AY,06:00:00,06:00:00,Y,2,0,0
 
 }  // namespace
 
-// The rounds of a raptor_state are initialized on first use. The rounds that
-// only the first (deep) search reached must not leak into the second (shallow)
-// search on the same state: both reach the same destination, so its stale
-// arrival looks like a journey with more transfers.
+// Pong initializes the rounds of a raptor_state on first use (lazy reset). The
+// rounds that only the first (deep) search reached must not leak into the
+// second (shallow) search on the same state: both reach the same destination,
+// so its stale arrival looks like a journey with more transfers.
 TEST(routing, raptor_state_reuse) {
   auto const tt = loader::load(state_reuse_files(),
                                {2024_y / June / 18, 2024_y / June / 20});

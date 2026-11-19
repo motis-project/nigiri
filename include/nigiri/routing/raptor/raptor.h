@@ -31,7 +31,8 @@ enum class search_mode { kOneToOne, kOneToAll };
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          bool LazyReset = false>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -195,13 +196,15 @@ struct raptor {
 
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
-    if constexpr (SearchMode == search_mode::kOneToAll) {
+    if constexpr (LazyReset) {
+      n_init_rounds_ = 0U;
+      init_rounds_up_to(0U);
+    } else {
       round_times_.reset(kInvalidArray);
       n_init_rounds_ = kMaxTransfers + 2U;
+    }
+    if constexpr (SearchMode == search_mode::kOneToAll) {
       utl::fill(state_.one_to_all_arrivals_.entries_, kInvalid);
-    } else {
-      n_init_rounds_ = 0U;
-      init_rounds_up_to(0U);  // for add_start()
     }
   }
 
@@ -469,8 +472,10 @@ struct raptor {
 
 private:
   void init_rounds_up_to(unsigned const k) {
-    for (; n_init_rounds_ <= k; ++n_init_rounds_) {
-      utl::fill(round_times_[n_init_rounds_], kInvalidArray);
+    if constexpr (LazyReset) {
+      for (; n_init_rounds_ <= k; ++n_init_rounds_) {
+        utl::fill(round_times_[n_init_rounds_], kInvalidArray);
+      }
     }
   }
 
