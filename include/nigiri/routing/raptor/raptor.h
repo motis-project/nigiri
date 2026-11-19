@@ -30,7 +30,8 @@ enum class search_mode { kOneToOne, kOneToAll };
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          bool LazyReset = false>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -192,7 +193,13 @@ struct raptor {
 
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
-    round_times_.reset(kInvalidArray);
+    if constexpr (LazyReset) {
+      state_.n_init_rounds_ = 0U;
+      init_rounds_up_to(0U);
+    } else {
+      round_times_.reset(kInvalidArray);
+      state_.n_init_rounds_ = kMaxTransfers + 2U;
+    }
     if constexpr (SearchMode == search_mode::kOneToAll) {
       utl::fill(state_.one_to_all_arrivals_.entries_, kInvalid);
     }
@@ -241,6 +248,8 @@ struct raptor {
       update_one_to_all_arrivals(0U);
     }
     for (auto k = 1U; k != end_k; ++k) {
+      init_rounds_up_to(k);
+
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
@@ -420,8 +429,9 @@ struct raptor {
       return;
     }
 
+    auto const end_init_k = std::min(end_k, state_.n_init_rounds_);
     is_dest_.for_each_set_bit([&](auto const i) {
-      for (auto k = 1U; k != end_k; ++k) {
+      for (auto k = 1U; k < end_init_k; ++k) {
         auto const dest_time = round_times_[k][i][Vias];
         if (dest_time != kInvalid) {
           trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",
@@ -449,6 +459,7 @@ struct raptor {
     }
     trace("reconstruct({} - {}, {} transfers", j.departure_time(),
           j.arrival_time(), j.transfers_);
+    init_rounds_up_to(j.transfers_ + 1U);
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
   }
 
@@ -457,6 +468,15 @@ struct raptor {
   }
 
 private:
+  void init_rounds_up_to(unsigned const k) {
+    if constexpr (LazyReset) {
+      auto const n = round_times_.n_columns_;
+      for (auto& i = state_.n_init_rounds_; i <= k; ++i) {
+        utl::fill(round_times_.entries_.subspan(i * n, n), kInvalidArray);
+      }
+    }
+  }
+
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
