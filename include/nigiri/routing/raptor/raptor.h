@@ -275,6 +275,7 @@ struct raptor {
           utl::fill(state_.route_best_arr_, kInvalid);
         }
       }
+
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
         auto const l = location_idx_t{i};
