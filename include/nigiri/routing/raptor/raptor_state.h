@@ -32,10 +32,7 @@ struct raptor_state {
                        unsigned n_rt_transports);
 
   template <via_offset_t Vias>
-  void print(timetable const& tt,
-             date::sys_days,
-             delta_t invalid,
-             unsigned n_rounds);
+  void print(timetable const& tt, date::sys_days, delta_t invalid);
 
   template <via_offset_t Vias>
   std::span<std::array<delta_t, Vias + 1>> get_tmp() {
@@ -106,6 +103,7 @@ struct raptor_state {
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;
   std::vector<delta_t> round_times_storage_;
+  unsigned n_init_rounds_{0U};
   std::vector<delta_t> bounds_storage_;
   cista::raw::flat_matrix<delta_t> one_to_all_arrivals_;
   bitvec station_mark_;

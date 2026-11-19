@@ -2,7 +2,6 @@
 
 #include <cassert>
 #include <cstdlib>
-#include <algorithm>
 #include <limits>
 #include <span>
 #include <vector>
@@ -137,8 +136,6 @@ struct raptor {
   algo_stats_t get_stats() const { return stats_; }
 
   void fill_bounds(std::size_t const n_rows) {
-    assert(n_rows <= n_init_rounds_);
-
     auto& s = state_;
     auto const n = static_cast<std::size_t>(s.n_locations_);
 
@@ -197,11 +194,11 @@ struct raptor {
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     if constexpr (LazyReset) {
-      n_init_rounds_ = 0U;
+      state_.n_init_rounds_ = 0U;
       init_rounds_up_to(0U);
     } else {
       round_times_.reset(kInvalidArray);
-      n_init_rounds_ = kMaxTransfers + 2U;
+      state_.n_init_rounds_ = kMaxTransfers + 2U;
     }
     if constexpr (SearchMode == search_mode::kOneToAll) {
       utl::fill(state_.one_to_all_arrivals_.entries_, kInvalid);
@@ -432,7 +429,7 @@ struct raptor {
       return;
     }
 
-    auto const end_init_k = std::min(end_k, n_init_rounds_);
+    auto const end_init_k = std::min(end_k, state_.n_init_rounds_);
     is_dest_.for_each_set_bit([&](auto const i) {
       for (auto k = 1U; k < end_init_k; ++k) {
         auto const dest_time = round_times_[k][i][Vias];
@@ -473,8 +470,9 @@ struct raptor {
 private:
   void init_rounds_up_to(unsigned const k) {
     if constexpr (LazyReset) {
-      for (; n_init_rounds_ <= k; ++n_init_rounds_) {
-        utl::fill(round_times_[n_init_rounds_], kInvalidArray);
+      auto const n = round_times_.n_columns_;
+      for (auto& i = state_.n_init_rounds_; i <= k; ++i) {
+        utl::fill(round_times_.entries_.subspan(i * n, n), kInvalidArray);
       }
     }
   }
@@ -1667,7 +1665,6 @@ private:
   std::span<std::array<delta_t, Vias + 1>> tmp_;
   std::span<std::array<delta_t, Vias + 1>> best_;
   flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;
-  unsigned n_init_rounds_{0U};
   bitvec const& is_dest_;
   std::array<bitvec, kMaxVias> const& is_via_;
   std::vector<std::uint16_t> const& dist_to_end_;
