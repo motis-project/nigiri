@@ -35,4 +35,21 @@ timetable load(std::vector<timetable_source> const&,
                shapes_storage* = nullptr,
                bool ignore = false);
 
+struct dir_source {
+  dir const& dir_;
+  loader_config loader_config_{};
+};
+
+timetable load(std::vector<dir_source> const&,
+               interval<date::sys_days> const&,
+               finalize_options const& = {},
+               assistance_times* = nullptr,
+               shapes_storage* = nullptr);
+
+timetable load(dir const&,
+               interval<date::sys_days> const&,
+               finalize_options const& = {},
+               assistance_times* = nullptr,
+               shapes_storage* = nullptr);
+
 }  // namespace nigiri::loader

@@ -21,8 +21,8 @@ feed_info read_feed_info(std::string_view file_content) {
   };
   utl::for_each_row<feed_info_record>(
       file_content, [&](feed_info_record const& r) {
-        ret.feed_end_date_ = r.feed_end_date_->and_then(
-            [](unsigned const x) { return std::optional{parse_date(x)}; });
+        ret.feed_end_date_ = r.feed_end_date_->transform(
+            [](unsigned const x) { return parse_date(x); });
         ret.feed_lang_ = r.feed_lang_->or_else([&] { return *r.default_lang_; })
                              .value_or("en")
                              .view();

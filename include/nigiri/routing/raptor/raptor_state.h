@@ -104,6 +104,7 @@ struct raptor_state {
   std::vector<delta_t> best_storage_;
   std::vector<delta_t> round_times_storage_;
   std::vector<delta_t> bounds_storage_;
+  cista::raw::flat_matrix<delta_t> one_to_all_arrivals_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;

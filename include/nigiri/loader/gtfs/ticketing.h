@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nigiri/loader/import_context.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -14,6 +15,7 @@ struct agency_ticketing_map_t;
 namespace nigiri::loader::gtfs {
 
 void load_ticketing(timetable& tt,
+                    import_context&,
                     dir const& d,
                     agency_ticketing_map_t const& agency_ticketing,
                     stops_map_t const& stops,

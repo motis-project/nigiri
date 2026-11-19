@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/loader/hrd/stamm/provider.h"
+#include "nigiri/loader/import_context.h"
 
 #include "nigiri/loader/init_finish.h"
 
@@ -18,7 +19,8 @@ TEST(hrd, parse_providers) {
       "00003 : A9____ XY____\n";
   for (auto const& c : configs) {
     auto tt = timetable{};
-    loader::register_special_stations(tt);
+    auto ctx = loader::import_context{tt};
+    loader::register_special_stations(tt, ctx);
     auto providers = parse_providers(c, source_idx_t{0}, tt, input);
 
     EXPECT_EQ(4U, providers.size());

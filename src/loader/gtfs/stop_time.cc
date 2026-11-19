@@ -4,6 +4,7 @@
 #include <tuple>
 
 #include "utl/enumerate.h"
+#include "utl/lookup.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
@@ -79,36 +80,45 @@ void read_stop_times(trip_data& trips,
                                    flex_area_idx_t const flex_area) {
     auto pickup_booking = booking_rule_idx_t::invalid();
     if (!s.pickup_booking_rule_id_->view().empty()) {
-      auto const it = booking_rules.find(s.pickup_booking_rule_id_->view());
-      if (it == end(booking_rules)) {
+      if (auto const booking =
+              utl::lookup(booking_rules, s.pickup_booking_rule_id_->view())) {
+        pickup_booking = *booking;
+      } else {
         log(log_lvl::error, "loader.gtfs.stop_time",
             "stop_times.txt:{} booking rule {} not found", line_number,
             s.pickup_booking_rule_id_->view());
-      } else {
-        pickup_booking = it->second;
       }
     }
 
     auto drop_off_booking = booking_rule_idx_t::invalid();
     if (!s.drop_off_booking_rule_id_->view().empty()) {
-      auto const it = booking_rules.find(s.drop_off_booking_rule_id_->view());
-      if (it == end(booking_rules)) {
+      if (auto const booking =
+              utl::lookup(booking_rules, s.drop_off_booking_rule_id_->view())) {
+        drop_off_booking = *booking;
+      } else {
         log(log_lvl::error, "loader.gtfs.stop_time",
             "stop_times.txt:{} booking rule {} not found", line_number,
             s.drop_off_booking_rule_id_->view());
-      } else {
-        drop_off_booking = it->second;
       }
     }
 
     t->flex_stops_.push_back(l_group == location_group_idx_t::invalid()
                                  ? flex_stop_t{flex_area}
                                  : flex_stop_t{l_group});
-    t->flex_time_windows_.push_back(stop_time_window{
-        .pickup_booking_rule_ = pickup_booking,
-        .drop_off_booking_rule_ = drop_off_booking,
-        .start_ = hhmm_to_min(*s.start_pickup_drop_off_window_),
-        .end_ = hhmm_to_min(*s.end_pickup_drop_off_window_)});
+    // Windows are half-open [start, end). A zero-length window [T, T] is
+    // invalid in GTFS-Flex, but feeds use it for a fixed departure at T
+    // (e.g. call-taxis in the Austrian feeds): read it as the single minute
+    // [T, T + 1) so that everything downstream can treat windows uniformly.
+    auto const start = hhmm_to_min(*s.start_pickup_drop_off_window_);
+    auto end = hhmm_to_min(*s.end_pickup_drop_off_window_);
+    if (end == start) {
+      end += minutes_after_midnight_t{1};
+    }
+    t->flex_time_windows_.push_back(
+        stop_time_window{.pickup_booking_rule_ = pickup_booking,
+                         .drop_off_booking_rule_ = drop_off_booking,
+                         .start_ = start,
+                         .end_ = end});
   };
 
   // Parse regular trip.
@@ -156,13 +166,13 @@ void read_stop_times(trip_data& trips,
             last_trip->to_line_ = line_number - 1;
           }
 
-          auto const trip_it = trips.trips_.find(t_id);
-          if (trip_it == end(trips.trips_)) {
+          auto const trip_idx = utl::lookup(trips.trips_, t_id);
+          if (!trip_idx.has_value()) {
             log(log_lvl::error, "loader.gtfs.stop_time",
                 "stop_times.txt:{} trip \"{}\" not found", line_number, t_id);
             return;
           }
-          t = &trips.data_[trip_it->second];
+          t = &trips.data_[*trip_idx];
           last_trip_id = t_id;
           last_trip = t;
 
@@ -174,32 +184,33 @@ void read_stop_times(trip_data& trips,
         auto l_group = location_group_idx_t::invalid();
         auto flex_area = flex_area_idx_t::invalid();
         if (!s.stop_id_->view().empty()) {
-          auto const it = stops.find(s.stop_id_->view());
-          if (it == end(stops)) {
+          auto const stop_loc = utl::lookup(stops, s.stop_id_->view());
+          if (!stop_loc.has_value()) {
             log(log_lvl::error, "loader.gtfs.stop_time",
                 "stop_times.txt:{}: unknown stop \"{}\"", line_number,
                 s.stop_id_->view());
             return;
           }
-          l = it->second;
+          l = *stop_loc;
         } else if (!s.location_group_id_->view().empty()) {
-          auto const it = location_groups.find(s.location_group_id_->view());
-          if (it == end(location_groups)) {
+          auto const group =
+              utl::lookup(location_groups, s.location_group_id_->view());
+          if (!group.has_value()) {
             log(log_lvl::error, "loader.gtfs.stop_time",
                 "stop_times.txt:{}: unknown location group \"{}\"", line_number,
                 s.location_group_id_->view());
             return;
           }
-          l_group = it->second;
+          l_group = *group;
         } else if (!s.location_id_->view().empty()) {
-          auto const it = flex_areas.find(s.location_id_->view());
-          if (it == end(flex_areas)) {
+          auto const area = utl::lookup(flex_areas, s.location_id_->view());
+          if (!area.has_value()) {
             log(log_lvl::error, "loader.gtfs.stop_time",
                 "stop_times.txt:{}: unknown flex area with location_id \"{}\"",
                 line_number, s.location_group_id_->view());
             return;
           }
-          flex_area = it->second;
+          flex_area = *area;
         } else {
           log(log_lvl::error, "loader.gtfs.stop_time",
               "stop_times.txt:{}: no stop_id, location_group, or location_id",

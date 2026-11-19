@@ -5,18 +5,21 @@
 #include "boost/json.hpp"
 
 #include "utl/get_or_create.h"
+#include "utl/lookup.h"
 #include "utl/parser/csv_range.h"
 
 #include "geo/box.h"
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/parse_time.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
 
 flex_areas_t parse_flex_areas(timetable& tt,
+                              import_context& ctx,
                               translator& i18n,
                               source_idx_t const src,
                               std::string_view file_content) {
@@ -90,7 +93,7 @@ flex_areas_t parse_flex_areas(timetable& tt,
       tt.flex_area_id_.emplace_back(tt.strings_.store(id));
       tt.flex_area_src_.emplace_back(src);
       tt.flex_area_bbox_.emplace_back(box);
-      tt.flex_area_transports_.emplace_back_empty();
+      ctx.flex_area_transports_.emplace_back_empty();
       tt.flex_area_rtree_.insert(box.min_.lnglat_float(),
                                  box.max_.lnglat_float(), idx);
 
@@ -106,6 +109,7 @@ flex_areas_t parse_flex_areas(timetable& tt,
 }
 
 location_groups_t parse_location_groups(timetable& tt,
+                                        import_context& ctx,
                                         translator& i18n,
                                         std::string_view file_content) {
   struct location_group_record {
@@ -123,18 +127,19 @@ location_groups_t parse_location_groups(timetable& tt,
         tt.location_group_name_.emplace_back(i18n.get(
             t::kLocationGroups, f::kLocationGroupName,
             r.location_group_name_->view(), r.location_group_id_->view()));
-        tt.location_group_locations_.emplace_back_empty();
-        tt.location_group_transports_.emplace_back_empty();
+        ctx.location_group_locations_.emplace_back_empty();
+        ctx.location_group_transports_.emplace_back_empty();
         map.emplace(r.location_group_id_->to_str(), idx);
       });
   return map;
 }
 
 void parse_location_group_stops(timetable& tt,
+                                import_context& ctx,
                                 std::string_view file_content,
                                 location_groups_t const& location_groups,
                                 stops_map_t const& stops) {
-  tt.location_location_groups_.resize(tt.n_locations());
+  ctx.location_location_groups_.resize(tt.n_locations());
 
   struct location_group_record {
     utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;
@@ -142,34 +147,31 @@ void parse_location_group_stops(timetable& tt,
   };
   utl::for_each_row<location_group_record>(
       file_content, [&](location_group_record const& r) {
-        auto const location_group_it =
-            location_groups.find(r.location_group_id_->view());
-        if (location_group_it == end(location_groups)) {
+        auto const location_group =
+            utl::lookup(location_groups, r.location_group_id_->view());
+        if (!location_group.has_value()) {
           log(log_lvl::error, "nigiri.loader.gtfs.flex",
               "location_group_id={} not found", r.location_group_id_->view());
           return;
         }
 
-        auto const stop_it = stops.find(r.stop_id_->view());
-        if (stop_it == end(stops)) {
+        auto const l = utl::lookup(stops, r.stop_id_->view());
+        if (!l.has_value()) {
           log(log_lvl::error, "nigiri.loader.gtfs.flex",
               "location_group_id={} not found", r.location_group_id_->view());
           return;
         }
 
-        tt.location_location_groups_[stop_it->second].push_back(
-            location_group_it->second);
-        tt.location_group_locations_[location_group_it->second].push_back(
-            stop_it->second);
+        ctx.location_location_groups_[*l].push_back(*location_group);
+        ctx.location_group_locations_[*location_group].push_back(*l);
       });
 }
 
-booking_rules_t parse_booking_rules(
-    timetable& tt,
-    translator& i18n,
-    std::string_view file_content,
-    traffic_days_t const& traffic_days,
-    hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
+booking_rules_t parse_booking_rules(timetable& tt,
+                                    import_context& ctx,
+                                    translator& i18n,
+                                    std::string_view file_content,
+                                    traffic_days_t const& traffic_days) {
   using utl::csv_col;
 
   struct booking_rule_record {
@@ -242,9 +244,8 @@ booking_rules_t parse_booking_rules(
                   (*r.prior_notice_service_id_)->view());
               return booking_rule::real_time{};
             }
-            prior_day.prior_notice_bitfield_ = utl::get_or_create(
-                bitfield_indices, *bitfield_it->second,
-                [&]() { return tt.register_bitfield(*bitfield_it->second); });
+            prior_day.prior_notice_bitfield_ =
+                register_bitfield(tt, ctx, *bitfield_it->second);
           }
           return prior_day;
         }
@@ -275,7 +276,7 @@ booking_rules_t parse_booking_rules(
 }
 
 void expand_flex_trip(timetable& tt,
-                      hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+                      import_context& ctx,
                       stop_seq_map_t& stop_seq,
                       noon_offset_hours_t const& noon_offsets,
                       interval<date::sys_days> const& selection,
@@ -327,9 +328,8 @@ void expand_flex_trip(timetable& tt,
     auto const idx =
         flex_transport_idx_t{tt.flex_transport_traffic_days_.size()};
 
-    tt.flex_transport_traffic_days_.push_back(utl::get_or_create(
-        bitfield_indices, traffic_days,
-        [&]() { return tt.register_bitfield(traffic_days); }));
+    tt.flex_transport_traffic_days_.push_back(
+        register_bitfield(tt, ctx, traffic_days));
     tt.flex_transport_stop_time_windows_.emplace_back(
         trp.flex_time_windows_ |
         transform([&](auto&& w) -> interval<duration_t> {
@@ -347,13 +347,13 @@ void expand_flex_trip(timetable& tt,
 
     for (auto const& s : trp.flex_stops_) {
       if (holds_alternative<flex_area_idx_t>(s)) {
-        auto transports = tt.flex_area_transports_[get<flex_area_idx_t>(s)];
+        auto transports = ctx.flex_area_transports_[get<flex_area_idx_t>(s)];
         if (transports.empty() || transports.back() != idx) {
           transports.push_back(idx);
         }
       } else {
         auto transports =
-            tt.location_group_transports_[get<location_group_idx_t>(s)];
+            ctx.location_group_transports_[get<location_group_idx_t>(s)];
         if (transports.empty() || transports.back() != idx) {
           transports.push_back(idx);
         }

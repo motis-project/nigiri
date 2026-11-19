@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/load.h"
 
 #include "nigiri/rt/frun.h"
@@ -128,13 +127,12 @@ end
 }  // namespace
 
 TEST(gtfs, lua_test) {
-  auto tt = loader::load({{.tag_ = "test",
-                           .path_ = kTimetable,
-                           .loader_config_ = {.default_tz_ = "Europe/Berlin",
-                                              .user_script_ = kUserScript}}},
-                         {},
-                         {date::sys_days{2019_y / March / 25},
-                          date::sys_days{2019_y / November / 1}});
+  auto const tt =
+      loader::load({{.tag_ = "test",
+                     .path_ = kTimetable,
+                     .loader_config_ = {.default_tz_ = "Europe/Berlin",
+                                        .user_script_ = kUserScript}}},
+                   {}, {2019_y / March / 25, 2019_y / November / 1});
 
   auto const get_tz_name = [&](timezone_idx_t const tz) {
     return tt.timezones_[tz].apply(utl::overloaded{

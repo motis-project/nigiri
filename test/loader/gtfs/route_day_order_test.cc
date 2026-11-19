@@ -82,11 +82,11 @@ T_PLAIN,17:06:00,17:06:00,S1,0
 T_PLAIN,17:16:00,17:16:00,S2,1
 )";
 
-  auto const tt = loader::load(
-      {{.tag_ = "test",
-        .path_ = kTimetable,
-        .loader_config_ = {.default_tz_ = "Etc/UTC"}}},
-      {}, {sys_days{2025_y / September / 1}, sys_days{2025_y / September / 8}});
+  auto const tt =
+      loader::load({{.tag_ = "test",
+                     .path_ = kTimetable,
+                     .loader_config_ = {.default_tz_ = "Etc/UTC"}}},
+                   {}, {2025_y / September / 1, 2025_y / September / 8});
 
   expect_route_day_order(tt);
 
@@ -132,11 +132,11 @@ T_LATE,23:30:00,23:30:00,S1,0
 T_LATE,23:59:00,23:59:00,S2,1
 )";
 
-  auto const tt = loader::load(
-      {{.tag_ = "test",
-        .path_ = kTimetable,
-        .loader_config_ = {.default_tz_ = "Etc/UTC"}}},
-      {}, {sys_days{2025_y / September / 1}, sys_days{2025_y / September / 8}});
+  auto const tt =
+      loader::load({{.tag_ = "test",
+                     .path_ = kTimetable,
+                     .loader_config_ = {.default_tz_ = "Etc/UTC"}}},
+                   {}, {2025_y / September / 1, 2025_y / September / 8});
 
   expect_route_day_order(tt);
 

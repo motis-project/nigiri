@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utl/visit.h"
+
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -14,11 +16,10 @@ struct interval_estimator {
   explicit interval_estimator(timetable const& tt, query const& q)
       : tt_{tt}, q_{q} {
 
-    auto const start_itv = std::visit(
-        utl::overloaded{
-            [](unixtime_t const& ut) { return interval<unixtime_t>{ut, ut}; },
-            [](interval<unixtime_t> iut) { return iut; }},
-        q.start_time_);
+    auto const start_itv = utl::visit(
+        q.start_time_,
+        [](unixtime_t const& ut) { return interval<unixtime_t>{ut, ut}; },
+        [](interval<unixtime_t> iut) { return iut; });
 
     auto const interval =
         q.fastest_direct_ ? std::chrono::days{1} : std::chrono::days{2};

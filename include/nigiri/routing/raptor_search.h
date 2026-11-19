@@ -6,6 +6,10 @@
 
 namespace nigiri::routing {
 
+interval<unixtime_t> raptor_search_interval(direction,
+                                            timetable const&,
+                                            query const&);
+
 template <typename AlgoState>
 routing_result raptor_search(
     timetable const&,

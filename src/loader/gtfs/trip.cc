@@ -10,6 +10,7 @@
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
@@ -21,6 +22,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -76,6 +78,7 @@ block::rule_services(trip_data& trips) {
 
       auto& [current_it, collected_trips, traffic_days] = next;
       collected_trips.emplace_back(current_it);
+      auto open = traffic_days;
       for (auto succ_it = std::next(current_it); succ_it != end(rule_trips);
            ++succ_it) {
         auto const& curr_trip = trips.data_[current_it->trip_];
@@ -85,8 +88,15 @@ block::rule_services(trip_data& trips) {
           continue;  // prev last stop != next first stop
         }
 
-        auto const new_intersection = traffic_days & succ_it->traffic_days_;
-        traffic_days &= ~succ_it->traffic_days_;
+        if (trips.no_stay_seated_.contains(
+                pair{current_it->trip_, succ_it->trip_})) {
+          open &= ~succ_it->traffic_days_;
+          continue;
+        }
+
+        auto const new_intersection = open & succ_it->traffic_days_;
+        open &= ~succ_it->traffic_days_;
+        traffic_days &= ~new_intersection;
         if (new_intersection.any()) {
           q.emplace(queue_entry{succ_it, collected_trips, new_intersection});
         }
@@ -207,6 +217,7 @@ trip_data read_trips(
     source_idx_t const src,
     source_file_idx_t const source_file,
     timetable& tt,
+    import_context& ctx,
     translator& i18n,
     route_map_t const& routes,
     traffic_days_t const& services,
@@ -266,10 +277,8 @@ trip_data read_trips(
           return;
         }
 
-        auto const shape_it = shapes.find(t.shape_id_->view());
-        auto const shape_idx = (shape_it == end(shapes))
-                                   ? shape_idx_t::invalid()
-                                   : shape_it->second;
+        auto const shape_idx = utl::lookup(shapes, t.shape_id_->view())
+                                   .value_or(shape_idx_t::invalid());
 
         auto const route_id = route_it->second->route_id_idx_;
 
@@ -365,7 +374,7 @@ trip_data read_trips(
             x.headsign_, trip_short_name, x.direction_, shape_idx, flags,
             std::string{t.ticketing_trip_id->view()},
             t.ticketing_type.val() == 1});
-        ret.data_.back().trip_idx_ = register_trip(tt, x);
+        ret.data_.back().trip_idx_ = register_trip(tt, ctx, x);
         ret.data_.back().clasz_ = trip_clasz;
         ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
         if (blk != nullptr) {
@@ -398,8 +407,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
          |
          utl::for_each([&](csv_frequency const& freq) {
            auto const t = freq.trip_id_->trim().view();
-           auto const trip_it = trips.trips_.find(t);
-           if (trip_it == end(trips.trips_)) {
+           auto const trip_idx = utl::lookup(trips.trips_, t);
+           if (!trip_idx.has_value()) {
              log(log_lvl::error, "loader.gtfs.frequencies",
                  "frequencies.txt: skipping frequency (trip \"{}\" not "
                  "found)",
@@ -421,7 +430,7 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
                exact == "1" ? frequency::schedule_relationship::kScheduled
                             : frequency::schedule_relationship::kUnscheduled;
 
-           auto& frequencies = trips.data_[trip_it->second].frequency_;
+           auto& frequencies = trips.data_[*trip_idx].frequency_;
            if (!frequencies.has_value()) {
              frequencies = std::vector<frequency>{};
            }

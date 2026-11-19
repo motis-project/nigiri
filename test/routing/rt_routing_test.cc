@@ -3,8 +3,7 @@
 #include <algorithm>
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -74,6 +73,9 @@ void get_direct_for(timetable const& tt,
 //
 // => delay T_RE2 at B  [03.05. 00:30]+2h = [03.05. 02:30]
 // => search connection from A --> D (only possible if the transfer at B works!)
+// T_RE2a (earlier, same route as T_RE2) and the forbidden transfer T_Z -> T_RE2
+// at B (T_Z -> T_RE2a stays allowed) move T_RE2 to a split route that departs
+// from a virtual location of B: the journeys below change at B into it.
 mem_dir test_files() {
   return mem_dir::read(R"(
 # agency.txt
@@ -86,6 +88,7 @@ A,A,,0.0,1.0,,
 B,B,,0.02,1.03,,
 C,C,,0.04,1.05,,
 D,D,,0.06,1.07,,
+Z,Z,,-5.0,-5.0,,
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -96,11 +99,14 @@ S_RE2,20190503,1
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 R_RE1,DB,RE 1,,,3
 R_RE2,DB,RE 2,,,3
+R_Z,DB,Z,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
 R_RE1,S_RE1,T_RE1,RE 1,
 R_RE2,S_RE2,T_RE2,RE 2,
+R_RE2,S_RE2,T_RE2a,RE 2,
+R_Z,S_RE2,T_Z,Z,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -109,6 +115,15 @@ T_RE1,50:00:00,50:00:00,B,2,0,0
 T_RE2,00:30:00,00:30:00,B,1,0,0
 T_RE2,00:45:00,00:45:00,C,2,0,0
 T_RE2,01:00:00,01:00:00,D,3,0,0
+T_RE2a,00:10:00,00:10:00,B,1,0,0
+T_RE2a,00:25:00,00:25:00,C,2,0,0
+T_RE2a,00:40:00,00:40:00,D,3,0,0
+T_Z,00:00:00,00:00:00,Z,1,0,0
+T_Z,00:05:00,00:05:00,B,2,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_route_id,to_route_id,from_trip_id,to_trip_id
+B,B,3,,,,T_Z,T_RE2
 )");
 }
 
@@ -138,11 +153,8 @@ TEST(routing, rt_raptor_forward) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
@@ -221,11 +233,8 @@ TEST(routing, rt_raptor_backward) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
@@ -304,11 +313,8 @@ TEST(routing, rt_raptor_unscheduled) {
         .count();
   };
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2019_y / March / 25, 2019_y / November / 1});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});

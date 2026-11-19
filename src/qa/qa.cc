@@ -3,6 +3,8 @@
 #include "cista/mmap.h"
 #include "cista/serialization.h"
 
+#include "utl/visit.h"
+
 #include <cmath>
 #include <numbers>
 
@@ -147,23 +149,21 @@ void benchmark_criteria::write(std::filesystem::path const& p) const {
 
 cista::wrapped<benchmark_criteria> benchmark_criteria::read(
     cista::memory_holder&& mem) {
-  return std::visit(
-      utl::overloaded{[&](cista::buf<cista::mmap>& b) {
-                        auto const ptr = reinterpret_cast<benchmark_criteria*>(
-                            &b[cista::data_start(kMode)]);
-                        return cista::wrapped{std::move(mem), ptr};
-                      },
-                      [&](cista::buffer& b) {
-                        auto const ptr =
-                            cista::deserialize<benchmark_criteria, kMode>(b);
-                        return cista::wrapped{std::move(mem), ptr};
-                      },
-                      [&](cista::byte_buf& b) {
-                        auto const ptr =
-                            cista::deserialize<benchmark_criteria, kMode>(b);
-                        return cista::wrapped{std::move(mem), ptr};
-                      }},
-      mem);
+  return utl::visit(
+      mem,
+      [&](cista::buf<cista::mmap>& b) {
+        auto const ptr =
+            reinterpret_cast<benchmark_criteria*>(&b[cista::data_start(kMode)]);
+        return cista::wrapped{std::move(mem), ptr};
+      },
+      [&](cista::buffer& b) {
+        auto const ptr = cista::deserialize<benchmark_criteria, kMode>(b);
+        return cista::wrapped{std::move(mem), ptr};
+      },
+      [&](cista::byte_buf& b) {
+        auto const ptr = cista::deserialize<benchmark_criteria, kMode>(b);
+        return cista::wrapped{std::move(mem), ptr};
+      });
 }
 
 }  // namespace nigiri::qa

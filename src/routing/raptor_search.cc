@@ -11,13 +11,35 @@
 
 #include "utl/overloaded.h"
 #include "utl/to_vec.h"
-#include "utl/verify.h"
 
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/routing/gpu/raptor.h"
+#include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/search_interval.h"
+#include "nigiri/routing/start_times.h"
 
 namespace nigiri::routing {
+
+// TODO: remove once we implement pong for earlier+fwd / later+bwd
+//       -> then range queries require a fixed interval
+interval<unixtime_t> raptor_search_interval(direction const search_dir,
+                                            timetable const& tt,
+                                            query const& q) {
+  auto const query_iv = start_time_interval(q.start_time_);
+  auto const max_iv =
+      search_dir == direction::kForward
+          ? interval_estimator<direction::kForward>{tt, q}.max_interval()
+          : interval_estimator<direction::kBackward>{tt, q}.max_interval();
+  auto const extends = q.min_connection_count_ != 0U;
+  auto const max_search_iv = interval{
+      extends && q.extend_interval_earlier_
+          ? std::min(query_iv.from_, max_iv.from_)
+          : query_iv.from_,
+      extends && q.extend_interval_later_ ? std::max(query_iv.to_, max_iv.to_)
+                                          : query_iv.to_};
+  return reachable_events(search_dir, max_search_iv, q.max_travel_time_);
+}
 
 namespace {
 
@@ -57,15 +79,22 @@ routing_result raptor_search_with_dir(
     query q,
     std::optional<std::chrono::seconds> const timeout) {
   q.sanitize(tt);
-  utl::verify(q.via_stops_.size() <= kMaxVias,
-              "too many via stops: {}, limit: {}", q.via_stops_.size(),
-              kMaxVias);
+
+  // If the real-time timetable has no data for the time span this query can
+  // reach, it cannot influence the result - drop it and let the static
+  // `Rt = false` code path handle the query.
+  if (rtt != nullptr &&
+      !rtt->affects(raptor_search_interval(SearchDir, tt, q), q.prf_idx_)) {
+    rtt = nullptr;
+  }
+  expand_td_offsets(tt, rtt, q);
 
   static_assert(kMaxVias == 2,
                 "raptor_search.cc needs to be adjusted for kMaxVias");
 
   switch (q.via_stops_.size()) {
     case 0:
+    default:
       return raptor_search_with_vias<SearchDir, 0>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
     case 1:
@@ -75,7 +104,6 @@ routing_result raptor_search_with_dir(
       return raptor_search_with_vias<SearchDir, 2>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
   }
-  std::unreachable();
 }
 
 std::string_view location_match_mode_str(location_match_mode const mode) {

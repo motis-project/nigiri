@@ -13,16 +13,15 @@ void for_each_schedule_transport(timetable const& tt,
                                  date::year_month_day const day,
                                  bool const gtfs_local_day,
                                  Fn&& cb) {
-  auto const id_matches = [&](trip_id_idx_t const t_id_idx) {
-    return tt.trip_id_src_[t_id_idx] == id.src_ &&
-           tt.trip_id_strings_[t_id_idx].view() == id.id_;
+  auto const id_matches = [&](trip_idx_t const t) {
+    return tt.trip_id_src_[t] == id.src_ &&
+           tt.trip_id_strings_[t].view() == id.id_;
   };
 
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), id,
-      [&](pair<trip_id_idx_t, trip_idx_t> const& a, trip_id const& b) {
-        return std::tuple{tt.trip_id_src_[a.first],
-                          tt.trip_id_strings_[a.first].view()} <
+      [&](trip_idx_t const a, trip_id const& b) {
+        return std::tuple{tt.trip_id_src_[a], tt.trip_id_strings_[a].view()} <
                std::tuple{b.src_, std::string_view{b.id_}};
       });
 
@@ -31,8 +30,8 @@ void for_each_schedule_transport(timetable const& tt,
   //    trip_id needs to map to all of them => only one can be active!
   //  - one transport can occur in several expanded trips due to in-seat
   //    transfers (all travel combinations are built) => several can be active!
-  for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
-    for (auto const [t, interval] : tt.trip_transport_ranges_[i->second]) {
+  for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(*i); ++i) {
+    for (auto const [t, interval] : tt.trip_transport_ranges_[*i]) {
       auto tz_offset = 0_minutes;
       if (gtfs_local_day) {
         auto const provider =
@@ -50,8 +49,8 @@ void for_each_schedule_transport(timetable const& tt,
           tt.day_idx(date::sys_days{day} - day_offset * date::days{1});
       auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
 
-      std::cout << tt.trip_id_strings_[i->first].view()
-                << "first_dep=" << first_dep << ", day_offset=" << day_offset
+      std::cout << tt.trip_id_strings_[*i].view() << "first_dep=" << first_dep
+                << ", day_offset=" << day_offset
                 << ", day=" << tt.to_unixtime(t_day, 0_minutes)
                 << ", active=" << traffic_days.test(to_idx(t_day))
                 << ", traffic_days="

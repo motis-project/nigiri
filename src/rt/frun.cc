@@ -5,10 +5,8 @@
 #include <span>
 #include <variant>
 
-#include "utl/overloaded.h"
 #include "utl/verify.h"
 #include "utl/visit.h"
-#include "utl/zip.h"
 
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -120,7 +118,7 @@ loc run_stop::get_loc() const { return {tt(), get_location_idx()}; }
 
 location_idx_t run_stop::get_location_idx() const {
   assert(fr_->size() > stop_idx_);
-  return get_stop().location_idx();
+  return tt().base(get_stop().location_idx());
 }
 
 std::string_view run_stop::get_location_id() const {
@@ -129,7 +127,7 @@ std::string_view run_stop::get_location_id() const {
 
 location_idx_t run_stop::get_scheduled_location_idx() const {
   assert(fr_->size() > stop_idx_);
-  return get_scheduled_stop().location_idx();
+  return tt().base(get_scheduled_stop().location_idx());
 }
 
 run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
@@ -221,6 +219,22 @@ unixtime_t run_stop::time(event_type const ev_type) const {
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
 }
 
+rt_data_state run_stop::data_state(event_type const ev_type) const {
+  assert(fr_->size() > stop_idx_);
+  auto const exists = ev_type == event_type::kArr
+                          ? stop_idx_ != 0U
+                          : stop_idx_ != fr_->size() - 1U;
+  return (exists && fr_->is_rt() && rtt() != nullptr)
+             ? rtt()->data_state(fr_->rt_, stop_idx_, ev_type)
+             : rt_data_state::kNoRtData;
+}
+
+bool run_stop::has_rt_data(event_type const ev_type) const {
+  auto const state = data_state(ev_type);
+  return state != rt_data_state::kNoRtData &&
+         state != rt_data_state::kInconsistent;
+}
+
 duration_t run_stop::delay(event_type const ev_type) const {
   assert(fr_->size() > stop_idx_);
   return time(ev_type) - scheduled_time(ev_type);
@@ -276,11 +290,9 @@ std::pair<timetable::route_ids const*, route_id_idx_t> run_stop::get_route(
     event_type const ev_type) const {
   if (fr_->is_scheduled()) {
     auto const trip_idx = get_trip_idx(ev_type);
-    auto const r =
-        tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
-            ? nullptr
-            : &tt().route_ids_
-                   [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]];
+    auto const r = tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
+                       ? nullptr
+                       : &tt().route_ids_[tt().trip_id_src_[trip_idx]];
     return {r, tt().trip_route_id_[trip_idx]};
   } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
              route_id != route_id_idx_t::invalid()) {
@@ -486,8 +498,7 @@ std::optional<date::sys_days> run_stop::looped_calendar_since(
   if (!fr_->is_scheduled()) {
     return std::nullopt;
   }
-  auto const id_idx = tt().trip_ids_.at(get_trip_idx(ev_type)).front();
-  auto const src = tt().trip_id_src_.at(id_idx);
+  auto const src = tt().trip_id_src_.at(get_trip_idx(ev_type));
   auto const [service_day, _] = get_trip_start(ev_type);
   return tt().src_end_date_.at(src) < service_day
              ? std::optional{tt().src_end_date_[src]}
@@ -717,27 +728,26 @@ void frun::for_each_shape_point(
         auto const common_stops = subrange.intersect(absolute_stop_range);
         if (common_stops.size() > 1) {
           auto const relative_common_stops = common_stops << stop_range_.from_;
-          std::visit(
-              utl::overloaded{
-                  [&](std::span<geo::latlng const> shape) {
-                    if (current_shape_source == shape_source::kTimetable) {
-                      consume_pos((*this)[relative_common_stops.from_].pos());
-                    }
-                    for (auto const& pos : shape) {
-                      consume_pos(pos);
-                    }
-                    if (current_shape_source == shape_source::kTimetable) {
-                      consume_pos((*this)[static_cast<stop_idx_t>(
-                                              relative_common_stops.to_ - 1)]
-                                      .pos());
-                    }
-                  },
-                  [&](interval<stop_idx_t> relative_range) {
-                    for (auto const stop_idx : relative_range) {
-                      consume_pos((*this)[stop_idx].pos());
-                    }
-                  }},
-              get_subshape(common_stops, trip_idx, subrange.from_));
+          utl::visit(
+              get_subshape(common_stops, trip_idx, subrange.from_),
+              [&](std::span<geo::latlng const> shape) {
+                if (current_shape_source == shape_source::kTimetable) {
+                  consume_pos((*this)[relative_common_stops.from_].pos());
+                }
+                for (auto const& pos : shape) {
+                  consume_pos(pos);
+                }
+                if (current_shape_source == shape_source::kTimetable) {
+                  consume_pos((*this)[static_cast<stop_idx_t>(
+                                          relative_common_stops.to_ - 1)]
+                                  .pos());
+                }
+              },
+              [&](interval<stop_idx_t> relative_range) {
+                for (auto const stop_idx : relative_range) {
+                  consume_pos((*this)[stop_idx].pos());
+                }
+              });
         }
       });
   if (consumed == 0U) {
@@ -753,9 +763,8 @@ trip_id frun::id() const {
     auto const trip_idx =
         tt_->merged_trips_[tt_->transport_to_trip_section_.at(t_.t_idx_).at(0)]
             .at(0);
-    auto const trip_id_idx = tt_->trip_ids_[trip_idx].at(0);
-    return {tt_->trip_id_strings_[trip_id_idx].view(),
-            tt_->trip_id_src_[trip_id_idx]};
+    return {tt_->trip_id_strings_[trip_idx].view(),
+            tt_->trip_id_src_[trip_idx]};
   } else if (rtt_ != nullptr &&
              holds_alternative<rt_add_trip_id_idx_t>(
                  rtt_->rt_transport_static_transport_[rt_])) {
@@ -844,23 +853,15 @@ void run_stop::print(std::ostream& out,
 
     out << "  [";
     for (auto const& trip_idx : merged_trips) {
-      auto j = 0U;
-
-      for (auto const [dbg, id] :
-           utl::zip(tt.trip_debug_.at(trip_idx), tt.trip_ids_.at(trip_idx))) {
-        if (j++ != 0) {
-          out << ", ";
-        }
-        out << "{name="
-            << display_name(last ? event_type::kArr : event_type::kDep, {})
-            << ", day=";
-        date::to_stream(
-            out, "%F",
-            tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);
-        out << ", id=" << tt.trip_id_strings_.at(id).view()
-            << ", src=" << static_cast<int>(to_idx(tt.trip_id_src_.at(id)));
-        out << "}";
-      }
+      out << "{name="
+          << display_name(last ? event_type::kArr : event_type::kDep, {})
+          << ", day=";
+      date::to_stream(
+          out, "%F",
+          tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);
+      out << ", id=" << tt.trip_id_strings_.at(trip_idx).view()
+          << ", src=" << static_cast<int>(to_idx(tt.trip_id_src_.at(trip_idx)));
+      out << "}";
     }
     out << "]";
   }

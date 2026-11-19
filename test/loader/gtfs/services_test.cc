@@ -37,8 +37,7 @@ using namespace date;
  */
 
 TEST(gtfs, service_dates) {
-  auto const i = interval{date::sys_days{July / 1 / 2006},
-                          date::sys_days{August / 1 / 2006}};
+  auto const i = interval<date::sys_days>{July / 1 / 2006, August / 1 / 2006};
   auto dates =
       read_calendar_date(example_files().get_file(kCalendarDatesFile).data());
   auto calendar = read_calendar(example_files().get_file(kCalenderFile).data());
@@ -59,8 +58,7 @@ TEST(gtfs, von_dates) {
   constexpr auto const kCalendar =
       R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
 "T0+ss#68","1","1","1","1","1","0","0","20240226","20240428")";
-  auto const i = interval{date::sys_days{August / 7 / 2024},
-                          date::sys_days{August / 7 / 2025}};
+  auto const i = interval<date::sys_days>{August / 7 / 2024, August / 7 / 2025};
   auto const dates = read_calendar_date("");
   auto const calendar = read_calendar(kCalendar);
 

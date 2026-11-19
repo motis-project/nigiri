@@ -1,7 +1,7 @@
 #include "nigiri/routing/journey.h"
 
 #include "utl/enumerate.h"
-#include "utl/overloaded.h"
+#include "utl/visit.h"
 
 #include "nigiri/common/indent.h"
 #include "nigiri/rt/frun.h"
@@ -14,32 +14,31 @@ void journey::leg::print(std::ostream& out,
                          rt_timetable const* rtt,
                          unsigned const n_indent,
                          bool const) const {
-  std::visit(
-      utl::overloaded{
-          [&](run_enter_exit const& t) {
-            auto const fr = rt::frun{tt, rtt, t.r_};
-            for (auto i = t.stop_range_.from_; i != t.stop_range_.to_; ++i) {
-              if (!fr[i].is_cancelled()) {
-                fr[i].print(out, i == t.stop_range_.from_,
-                            i == t.stop_range_.to_ - 1U);
-                out << "\n";
-              }
-            }
-          },
-          [&](footpath const x) {
-            indent(out, n_indent);
-            out << "FOOTPATH (duration=" << x.duration().count() << ")\n";
-          },
-          [&](offset const x) {
-            indent(out, n_indent);
-            out << "MUMO (";
-            if (x.transport_mode_ != 0U) {
-              out << "mode=" << x.transport_mode_ << ", ";
-            }
-            out << "payload=" << x.transport_mode_payload_
-                << ", duration=" << x.duration().count() << ")\n";
-          }},
-      uses_);
+  utl::visit(
+      uses_,
+      [&](run_enter_exit const& t) {
+        auto const fr = rt::frun{tt, rtt, t.r_};
+        for (auto i = t.stop_range_.from_; i != t.stop_range_.to_; ++i) {
+          if (!fr[i].is_cancelled()) {
+            fr[i].print(out, i == t.stop_range_.from_,
+                        i == t.stop_range_.to_ - 1U);
+            out << "\n";
+          }
+        }
+      },
+      [&](footpath const x) {
+        indent(out, n_indent);
+        out << "FOOTPATH (duration=" << x.duration().count() << ")\n";
+      },
+      [&](offset const x) {
+        indent(out, n_indent);
+        out << "MUMO (";
+        if (x.transport_mode_ != 0U) {
+          out << "mode=" << x.transport_mode_ << ", ";
+        }
+        out << "payload=" << x.transport_mode_payload_
+            << ", duration=" << x.duration().count() << ")\n";
+      });
 }
 
 void journey::print(std::ostream& out,

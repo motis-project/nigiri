@@ -17,6 +17,7 @@
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/translations.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -143,6 +144,7 @@ struct trip_data {
   hash_map<std::string, gtfs_trip_idx_t> trips_;
   hash_map<std::string, std::unique_ptr<block>> blocks_;
   vector_map<gtfs_trip_idx_t, trip> data_;
+  hash_set<pair<gtfs_trip_idx_t, gtfs_trip_idx_t>> no_stay_seated_;
 };
 
 enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };
@@ -153,6 +155,7 @@ trip_data read_trips(
     source_idx_t,
     source_file_idx_t,
     timetable&,
+    import_context&,
     translator&,
     route_map_t const&,
     traffic_days_t const&,

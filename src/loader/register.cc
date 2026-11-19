@@ -4,6 +4,7 @@
 
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/tz_map.h"
+#include "nigiri/loader/import_context.h"
 
 #include "sol/sol.hpp"
 
@@ -728,38 +729,41 @@ provider_idx_t register_agency(timetable& tt, agency const& a) {
   return provider_idx_t{idx};
 }
 
-location_idx_t register_location(timetable& tt, location const& l) {
+location_idx_t register_location(timetable& tt,
+                                 import_context& ctx,
+                                 location const& l) {
   auto& loc = tt.locations_;
 
   auto const next_idx = static_cast<location_idx_t::value_t>(loc.names_.size());
   auto const l_idx = location_idx_t{next_idx};
-  auto const [it, is_new] = loc.location_id_to_idx_.emplace(
-      owning_location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
 
-  if (is_new) {
-    utl::verify(next_idx <= footpath::kMaxTarget, "MAX={} locations reached",
-                footpath::kMaxTarget);
-
-    loc.names_.emplace_back(l.name_);
-    loc.platform_codes_.emplace_back(l.platform_code_);
-    loc.stop_codes_.emplace_back(l.stop_code_);
-    loc.descriptions_.emplace_back(l.description_);
-    loc.coordinates_.emplace_back(l.pos_);
-    loc.ids_.emplace_back(l.id_);
-    loc.src_.emplace_back(l.src_);
-    loc.types_.emplace_back(l.type_);
-    loc.location_timezones_.emplace_back(l.timezone_idx_);
-    loc.equivalences_.emplace_back();
-    loc.children_.emplace_back();
-    loc.preprocessing_footpaths_out_.emplace_back();
-    loc.preprocessing_footpaths_in_.emplace_back();
-    loc.transfer_time_.emplace_back(l.transfer_time_);
-    loc.parents_.emplace_back(l.parent_);
-  } else {
-    assert(false && "duplicate station");
-    log(log_lvl::error, "timetable.register_location", "duplicate station {}",
-        l.id_);
+  if (!l.id_.empty()) {
+    auto const [it, is_new] = loc.location_id_to_idx_.emplace(
+        owning_location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
+    if (!is_new) {
+      assert(false && "duplicate station");
+      log(log_lvl::error, "timetable.register_location", "duplicate station {}",
+          l.id_);
+      return it->second;
+    }
   }
+
+  utl::verify(next_idx <= footpath::kMaxTarget, "MAX={} locations reached",
+              footpath::kMaxTarget);
+
+  loc.names_.push_back(l.name_);
+  loc.platform_codes_.push_back(l.platform_code_);
+  loc.stop_codes_.push_back(l.stop_code_);
+  loc.descriptions_.push_back(l.description_);
+  loc.coordinates_.push_back(l.pos_);
+  loc.ids_.emplace_back(l.id_);
+  loc.src_.push_back(l.src_);
+  loc.types_.push_back(l.type_);
+  loc.location_timezones_.push_back(l.timezone_idx_);
+  ctx.equivalences_.emplace_back();
+  ctx.children_.emplace_back();
+  loc.transfer_time_.push_back(to_transfer_time(l.transfer_time_));
+  loc.parents_.push_back(l.parent_);
 
   assert(loc.names_.size() == next_idx + 1);
   assert(loc.platform_codes_.size() == next_idx + 1);
@@ -770,17 +774,25 @@ location_idx_t register_location(timetable& tt, location const& l) {
   assert(loc.src_.size() == next_idx + 1);
   assert(loc.types_.size() == next_idx + 1);
   assert(loc.location_timezones_.size() == next_idx + 1);
-  assert(loc.equivalences_.size() == next_idx + 1);
-  assert(loc.children_.size() == next_idx + 1);
-  assert(loc.preprocessing_footpaths_out_.size() == next_idx + 1);
-  assert(loc.preprocessing_footpaths_in_.size() == next_idx + 1);
+  assert(ctx.equivalences_.size() == next_idx + 1);
+  assert(ctx.children_.size() == next_idx + 1);
   assert(loc.transfer_time_.size() == next_idx + 1);
   assert(loc.parents_.size() == next_idx + 1);
 
-  return it->second;
+  return l_idx;
 }
 
-route_id_idx_t register_route(timetable& tt, route const& r) {
+paged_vecvec<route_id_idx_t, trip_idx_t>& route_id_trips(
+    import_context& ctx, source_idx_t const src) {
+  if (ctx.route_id_trips_.size() <= to_idx(src)) {
+    ctx.route_id_trips_.resize(to_idx(src) + 1U);
+  }
+  return ctx.route_id_trips_[src];
+}
+
+route_id_idx_t register_route(timetable& tt,
+                              import_context& ctx,
+                              route const& r) {
   auto& route_id = tt.route_ids_[r.src_];
   auto const idx = route_id.ids_.store(r.id_);
   route_id.route_id_category_.emplace_back(r.category_);
@@ -790,19 +802,17 @@ route_id_idx_t register_route(timetable& tt, route const& r) {
   route_id.route_id_colors_.emplace_back(r.color_);
   route_id.route_id_type_.emplace_back(r.route_type_);
   route_id.route_id_provider_.emplace_back(r.agency_);
-  route_id.route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
+  route_id_trips(ctx, r.src_).emplace_back(std::initializer_list<trip_idx_t>{});
   route_id.route_id_ticketing_link_.emplace_back(r.ticketing_link_);
   return idx;
 }
 
-trip_idx_t register_trip(timetable& tt, trip const& t) {
-  auto const trip_idx = trip_idx_t{tt.trip_ids_.size()};
-
-  auto const trip_id_idx = trip_id_idx_t{tt.trip_id_strings_.size()};
+trip_idx_t register_trip(timetable& tt, import_context& ctx, trip const& t) {
+  auto const trip_idx = trip_idx_t{tt.n_trips()};
 
   if (t.route_ != route_id_idx_t::invalid()) {  // HRD
-    tt.route_ids_[t.src_].route_id_trips_[t.route_].push_back(trip_idx);
-    tt.trip_direction_id_.resize(tt.n_trips() + to_idx(trip_id_idx) + 1U);
+    route_id_trips(ctx, t.src_)[t.route_].push_back(trip_idx);
+    tt.trip_direction_id_.resize(to_idx(trip_idx) + 1U);
     tt.trip_direction_id_.set(trip_idx, t.direction_ == direction_id_t{1U});
   }
   tt.trip_route_id_.emplace_back(t.route_);
@@ -810,12 +820,10 @@ trip_idx_t register_trip(timetable& tt, trip const& t) {
   tt.trip_id_strings_.emplace_back(t.id_);
   tt.trip_id_src_.emplace_back(t.src_);
 
-  tt.trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
   tt.trip_short_names_.emplace_back(t.short_name_);
   tt.trip_display_names_.emplace_back(t.display_name_);
-  tt.trip_ids_.emplace_back().emplace_back(trip_id_idx);
-  tt.trip_debug_.emplace_back().emplace_back(t.dbg_);
-  tt.trip_transport_ranges_.emplace_back_empty();
+  tt.trip_debug_.push_back(t.dbg_);
+  ctx.trip_transport_ranges_.emplace_back_empty();
 
   return trip_idx;
 }

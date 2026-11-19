@@ -1,5 +1,11 @@
 #pragma once
 
+#include <optional>
+
+#include "utl/helpers/algorithm.h"
+
+#include "nigiri/rt/frun.h"
+#include "nigiri/rt/run.h"
 #include "nigiri/string_store.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -66,6 +72,11 @@ struct localized_image {
   alert_str_idx_t language_;
 };
 
+enum class alert_stop_match : std::uint8_t {
+  kStopMatch,  // only alerts for the stop (or its parents)
+  kStopMatchOrNoStop  // + alerts that name no stop (trip, route, agency)
+};
+
 struct alerts {
   struct by_route_id {
     direction_id_t direction_;
@@ -81,25 +92,72 @@ struct alerts {
     location_idx_t l_;
     alert_idx_t alert_;
   };
+  struct by_trip {
+    location_idx_t l_;
+    alert_idx_t alert_;
+    transport t_{transport::invalid()};
+  };
   using by_route = by_rt_transport;
   using by_route_type = by_rt_transport;
 
-  // fuzzy_stop parameter:
-  //   - true: alert.l_=invalid matches everything
+  bool impacts(alert_idx_t const a, interval<unixtime_t> const& time) const {
+    auto const periods = impact_period_[a];
+    return periods.empty() ||
+           utl::any_of(periods, [&](auto&& p) { return p.overlaps(time); });
+  }
+
+  // r.stop_range_ with one stop: alerts for that stop of every trip there,
+  //   arrival to departure. More stops: alerts of every trip ridden (at least
+  //   two of its stops), first departure to last arrival of its part.
+  //   The alert period is checked against it.
+  // match:
+  //   - kStopMatchOrNoStop: for a stop, also alerts that name no stop
   //     => used for stop times
-  //   - false: alert.l_=invalid matches iff l=invalid
-  //     => used for itineraries
-  //     - leg (overall trip):
-  //         l == invalid => matches only not stop specific alerts
-  //         (addressing route/trip/agency)
-  //     - from/to/intermediateStop:
-  //         l != invalid => matches only concrete stop
+  //   - kStopMatch: only alerts for the stop, for the run only alerts that
+  //     name no stop => used for itineraries (leg vs. from/to/intermediate)
+  hash_set<alert_idx_t> get_alerts(timetable const& tt,
+                                   rt_timetable const& rtt,
+                                   rt::run const& r,
+                                   alert_stop_match const match) const {
+    auto alerts = hash_set<alert_idx_t>{};
+    auto fr = rt::frun{tt, &rtt, r};
+    if (!fr.is_scheduled()) {
+      return alerts;
+    }
+
+    auto const is_stop = r.stop_range_.size() == 1;
+    fr.stop_range_ = {stop_idx_t{0U}, fr.size()};  // all trips of the run
+    fr.for_each_trip([&](trip_idx_t const t,
+                         interval<stop_idx_t> const trip_stops) {
+      auto const s = trip_stops.intersect(r.stop_range_);
+      if (s.size() < (is_stop ? 1 : 2)) {
+        return;
+      }
+      auto const first = rt::run_stop{.fr_ = &fr, .stop_idx_ = s.from_};
+      auto const last = rt::run_stop{
+          .fr_ = &fr, .stop_idx_ = static_cast<stop_idx_t>(s.to_ - 1U)};
+      auto const from = first.time(is_stop && s.from_ != 0 ? event_type::kArr
+                                                           : event_type::kDep);
+      auto const to = last.time(
+          is_stop && s.to_ != fr.size() ? event_type::kDep : event_type::kArr);
+      auto const l =
+          is_stop ? first.get_location_idx() : location_idx_t::invalid();
+      auto const trip_alerts =
+          get_alerts(tt, tt.trip_id_src_[t], t, r, l,
+                     interval<unixtime_t>{from, to + duration_t{1}}, match);
+      alerts.insert(begin(trip_alerts), end(trip_alerts));
+    });
+    return alerts;
+  }
+
+  // For flex (without run): explicit time window.
   hash_set<alert_idx_t> get_alerts(timetable const& tt,
                                    source_idx_t const src,
                                    trip_idx_t const t,
-                                   rt_transport_idx_t const rt_t,
+                                   rt::run const& r,
                                    location_idx_t const l,
-                                   bool const fuzzy_stop) const {
+                                   interval<unixtime_t> const& time,
+                                   alert_stop_match const match) const {
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
@@ -110,26 +168,34 @@ struct alerts {
                                  ? location_idx_t::invalid()
                                  : tt.locations_.parents_[parent];
     auto const matches_location = [&](location_idx_t const x) {
-      return (fuzzy_stop ? (x == location_idx_t::invalid() || x == l)
-                         : (x == l)) ||
+      return x == l ||
+             (match == alert_stop_match::kStopMatchOrNoStop &&
+              x == location_idx_t::invalid()) ||
              (parent != location_idx_t::invalid() && parent == x) ||
              (grandparent != location_idx_t::invalid() && grandparent == x);
     };
 
     auto alerts = hash_set<alert_idx_t>{};
 
-    if (rt_t != rt_transport_idx_t::invalid()) {
-      for (auto const& a : rt_transport_[rt_t]) {
-        if (matches_location(a.l_)) {
+    if (r.is_rt()) {
+      for (auto const& a : rt_transport_[r.rt_]) {
+        if (matches_location(a.l_) && impacts(a.alert_, time)) {
           alerts.insert(a.alert_);
         }
+      }
+    }
+
+    for (auto const& a : trip_[t]) {
+      if ((!a.t_.is_valid() || a.t_ == r.t_) && matches_location(a.l_) &&
+          impacts(a.alert_, time)) {
+        alerts.insert(a.alert_);
       }
     }
 
     for (auto const& a : route_id_[src][route_id_idx]) {
       if ((a.direction_ == direction_id_t::invalid() ||
            a.direction_ == direction) &&
-          matches_location(a.l_)) {
+          matches_location(a.l_) && impacts(a.alert_, time)) {
         alerts.insert(a.alert_);
       }
     }
@@ -137,18 +203,26 @@ struct alerts {
     for (auto const& a : agency_[agency]) {
       if ((a.route_type_ == route_type_t::invalid() ||
            a.route_type_ == route_type) &&
-          matches_location(a.l_)) {
+          matches_location(a.l_) && impacts(a.alert_, time)) {
         alerts.insert(a.alert_);
       }
     }
 
-    if (l != location_idx_t::invalid()) {
-      for (auto const& a : location_[l]) {
-        alerts.insert(a);
+    auto const& by_route_type = route_type_[src];
+    if (to_idx(route_type) < by_route_type.size()) {
+      for (auto const& a : by_route_type[route_type]) {
+        if (matches_location(a.l_) && impacts(a.alert_, time)) {
+          alerts.insert(a.alert_);
+        }
       }
-      if (parent != location_idx_t::invalid()) {
-        for (auto const& a : location_[parent]) {
-          alerts.insert(a);
+    }
+
+    for (auto const x : {l, parent}) {
+      if (x != location_idx_t::invalid()) {
+        for (auto const& a : location_[x]) {
+          if (impacts(a, time)) {
+            alerts.insert(a);
+          }
         }
       }
     }
@@ -157,6 +231,7 @@ struct alerts {
   }
 
   paged_vecvec<rt_transport_idx_t, by_rt_transport> rt_transport_;
+  paged_vecvec<trip_idx_t, by_trip> trip_;
   vector_map<source_idx_t, paged_vecvec<route_id_idx_t, by_route_id>> route_id_;
   paged_vecvec<provider_idx_t, by_agency> agency_;
   vector_map<source_idx_t, paged_vecvec<route_type_t, by_route_type>>

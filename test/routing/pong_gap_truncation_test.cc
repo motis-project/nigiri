@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -82,11 +82,8 @@ L,15:30:00,15:30:00,B,2,0,0
 // the very first pong - is erased as not-validated: only 1 of 2 requested
 // connections is delivered.
 TEST(routing, pong_gap_truncation) {
-  auto tt = timetable{};
-  tt.date_range_ = {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 18, 2024_y / June / 20});
 
   auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
   auto const B = tt.find(location_id{"B", source_idx_t{0}}).value();

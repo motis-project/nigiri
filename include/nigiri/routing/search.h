@@ -6,8 +6,8 @@
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
+#include "utl/visit.h"
 
-#include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
@@ -85,7 +85,6 @@ struct search {
             bool const require_bikes_allowed,
             bool const require_cars_allowed,
             bool const no_compulsory_reservation,
-            transfer_time_settings& tts,
             algo_state_t& algo_state) {
     auto span = get_otel_tracer()->StartSpan("search::init");
     auto scope = opentelemetry::trace::Scope{span};
@@ -93,39 +92,18 @@ struct search {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
-    utl::verify(q_.via_stops_.size() <= kMaxVias,
-                "too many via stops: {}, limit: {}", q_.via_stops_.size(),
-                kMaxVias);
-
-    tts.factor_ = std::max(tts.factor_, 1.0F);
-    tts.min_transfer_time_ = std::max(tts.min_transfer_time_, 0_minutes);
-    tts.additional_time_ = std::max(tts.additional_time_, 0_minutes);
-    tts.default_ = tts.factor_ == 1.0F  //
-                   && tts.min_transfer_time_ == 0_minutes  //
-                   && tts.additional_time_ == 0_minutes;
-
-    collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
+    collect_destinations(tt_, rtt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
 
     for (auto const [i, via] : utl::enumerate(q_.via_stops_)) {
-      collect_via_destinations(tt_, via.location_, state_.is_via_[i]);
+      collect_via_destinations(tt_, rtt_, via.location_, state_.is_via_[i]);
     }
 
     if constexpr (Algo::kUseLowerBounds) {
       auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
-      dijkstra(
-          tt_, q_,
-          (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
-                : tt_.bwd_search_lb_graph_[q_.prf_idx_]),
-          (rtt_ == nullptr ? nullptr
-                           : &(kFwd ? rtt_->fwd_search_lb_graph_has_edges_
-                                    : rtt_->bwd_search_lb_graph_has_edges_)),
-          (rtt_ == nullptr ? nullptr
-                           : &(kFwd ? rtt_->fwd_search_lb_graph_
-                                    : rtt_->bwd_search_lb_graph_)),
-          state_.travel_time_lower_bound_);
+      dijkstra(tt_, rtt_, q_, SearchDir, state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
@@ -167,7 +145,7 @@ struct search {
         require_cars_allowed,
         q_.prf_idx_ == 2U,
         no_compulsory_reservation,
-        tts,
+        q_.transfer_time_settings_,
         q_.prf_idx_};
   }
 
@@ -180,37 +158,28 @@ struct search {
       : tt_{tt},
         rtt_{rtt},
         state_{s},
-        q_{std::move(q)},
-        search_interval_{std::visit(
-            utl::overloaded{[](interval<unixtime_t> const start_interval) {
-                              return start_interval;
-                            },
-                            [](unixtime_t const start_time) {
-                              return interval<unixtime_t>{start_time,
-                                                          start_time};
-                            }},
-            q_.start_time_)},
+        q_{std::move(q.sanitize(tt))},
+        search_interval_{utl::visit(
+            q_.start_time_,
+            [](interval<unixtime_t> const start_interval) {
+              return start_interval;
+            },
+            [](unixtime_t const start_time) {
+              return interval<unixtime_t>{start_time, start_time};
+            })},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.require_car_transport_,
                    q_.no_compulsory_reservation_,
-                   q_.transfer_time_settings_,
                    algo_state)},
-        timeout_(timeout) {
-    q_.sanitize(tt);
-  }
+        timeout_(timeout) {}
 
   routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
     auto scope = opentelemetry::trace::Scope{span};
 
     state_.results_.clear();
-
-    if (start_dest_overlap()) {
-      return {&state_.results_, search_interval_, stats_,
-              algo_.get_stats().to_map()};
-    }
 
     auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
     if (is_pretrip()) {
@@ -248,15 +217,14 @@ struct search {
             "number_of_results_in_interval={}, results_with_+1_ontrip={}, "
             "timeout_reached={}\n",
             is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
-            std::visit(
-                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
-                                  return start_interval;
-                                },
-                                [](unixtime_t const start_time) {
-                                  return interval<unixtime_t>{start_time,
-                                                              start_time};
-                                }},
-                q_.start_time_),
+            utl::visit(
+                q_.start_time_,
+                [](interval<unixtime_t> const& start_interval) {
+                  return start_interval;
+                },
+                [](unixtime_t const start_time) {
+                  return interval<unixtime_t>{start_time, start_time};
+                }),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
             state_.results_.size(), is_timeout_reached());
         span->SetAttribute("nigiri.search.timeout_reached",
@@ -268,15 +236,14 @@ struct search {
             "extend_later={}, initial={}, interval={}, timetable={}, "
             "number_of_results_in_interval={}\n",
             q_.extend_interval_earlier_, q_.extend_interval_later_,
-            std::visit(
-                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
-                                  return start_interval;
-                                },
-                                [](unixtime_t const start_time) {
-                                  return interval<unixtime_t>{start_time,
-                                                              start_time};
-                                }},
-                q_.start_time_),
+            utl::visit(
+                q_.start_time_,
+                [](interval<unixtime_t> const& start_interval) {
+                  return start_interval;
+                },
+                [](unixtime_t const start_time) {
+                  return interval<unixtime_t>{start_time, start_time};
+                }),
             search_interval_, tt_.external_interval(), n_results_in_interval());
       }
 
@@ -327,8 +294,8 @@ struct search {
                                          state_.results_);
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
-        return std::tuple{a.start_time_, a.transfers_} <
-               std::tuple{b.start_time_, b.transfers_};
+        return std::tie(a.start_time_, a.transfers_, a) <
+               std::tie(b.start_time_, b.transfers_, b);
       });
     }
 
@@ -337,7 +304,7 @@ struct search {
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            (std::chrono::steady_clock::now() - processing_start_time));
+            (std::chrono::steady_clock::now() - start_time_));
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
@@ -350,32 +317,6 @@ private:
   }
 
   bool is_pretrip() const { return !is_ontrip(); }
-
-  bool start_dest_overlap() const {
-    if (q_.start_match_mode_ == location_match_mode::kIntermodal ||
-        q_.dest_match_mode_ == location_match_mode::kIntermodal) {
-      return false;
-    }
-
-    auto const overlaps_start = [&](location_idx_t const x) {
-      return utl::any_of(q_.start_, [&](offset const& o) {
-        bool overlaps = false;
-        for_each_meta(
-            tt_, q_.start_match_mode_, o.target(),
-            [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
-        return overlaps;
-      });
-    };
-
-    return utl::any_of(q_.destination_, [&](offset const& o) {
-      auto overlaps = false;
-      for_each_meta(tt_, q_.dest_match_mode_, o.target(),
-                    [&](location_idx_t const eq) {
-                      overlaps = overlaps || overlaps_start(eq);
-                    });
-      return overlaps;
-    });
-  }
 
   unsigned n_results_in_interval() const {
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
@@ -438,7 +379,7 @@ private:
           for (auto const& s : it_range{from_it, to_it}) {
             trace("init: time_at_start={}, time_at_stop={} at {}\n",
                   s.time_at_start_, s.time_at_stop_, loc{tt_, s.stop_});
-            algo_.add_start(s.stop_, s.time_at_stop_);
+            algo_.add_start(s.stop_, s.time_at_stop_, s.v_);
           }
           trace("RUN ALGO\n");
 
@@ -446,10 +387,12 @@ private:
            * Upper bound: Search journeys faster than 'worst_time_at_dest'
            * It will not find journeys with the same duration
            */
-          auto const worst_time_at_dest =
+          auto worst_time_at_dest =
+              std::array<unixtime_t, kMaxTransfers + 2U>{};
+          worst_time_at_dest.fill(
               start_time + (kFwd ? 1 : -1) *
                                (std::min(fastest_direct_, q_.max_travel_time_) +
-                                duration_t{1});
+                                duration_t{1}));
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         state_.results_);
           kFwd ? ++stats_.n_execute_fwd_ : ++stats_.n_execute_bwd_;
@@ -493,6 +436,8 @@ private:
         });
   }
 
+  std::chrono::steady_clock::time_point start_time_{
+      std::chrono::steady_clock::now()};
   timetable const& tt_;
   rt_timetable const* rtt_;
   search_state& state_;

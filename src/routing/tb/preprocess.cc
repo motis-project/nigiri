@@ -313,7 +313,7 @@ void preprocess_transport(timetable const& tt,
     while (remaining_traffic_days.any()) {
       // departure time of current transport in relation to arrival day
       auto const dep = static_cast<std::uint16_t>(transfer_day_offset * 1440 +
-                                                  earliest_dep->mam_);
+                                                  (*earliest_dep).mam_);
 
       // check if max transfer time is exceeded
       if (dep - t_arr_mam > kMaxTransferTime) {
@@ -329,7 +329,7 @@ void preprocess_transport(timetable const& tt,
 
       // shift amount due to number of times transport u passed midnight
       auto const u_dep_day_offset =
-          static_cast<std::int8_t>(earliest_dep->days());
+          static_cast<std::int8_t>((*earliest_dep).days());
 
       // total shift amount relative to from transport traffic day
       auto const total_day_offset = static_cast<std::int8_t>(
@@ -573,7 +573,7 @@ tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
           for (auto const [segment_idx, src] : utl::zip(
                    segments,
                    std::span{begin(transport_segments), segments.size()})) {
-            auto const dst = d.segment_transfers_.add_back_sized(src.size());
+            auto dst = d.segment_transfers_.add_back_sized(src.size());
             for (auto const [to, from] : utl::zip(dst, src)) {
               to.to_segment_ =
                   d.transport_first_segment_[from.transport_idx_to_] +

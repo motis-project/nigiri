@@ -8,6 +8,7 @@
 namespace nigiri::loader::gtfs {
 
 void add_stop_groups(timetable&,
+                     import_context&,
                      std::string_view stop_group_elements_file_content,
                      stops_map_t const&);
 

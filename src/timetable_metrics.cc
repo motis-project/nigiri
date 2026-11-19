@@ -31,8 +31,9 @@ timetable_metrics get_metrics(timetable const& tt) {
   auto m = timetable_metrics{};
   m.feeds_.resize(tt.n_sources());
 
-  for (auto const src : tt.locations_.src_) {
-    if (src == source_idx_t::invalid()) {
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    auto const src = tt.locations_.src_[l];
+    if (src == source_idx_t::invalid() || tt.locations_.is_virt(l)) {
       continue;
     }
     ++m.feeds_[src].locations_;
@@ -40,8 +41,8 @@ timetable_metrics get_metrics(timetable const& tt) {
 
   // Count regular trips / transports
   // TODO Approach might count duplicates with merged trips
-  for (auto const& [trip_id, trip_idx] : tt.trip_id_to_idx_) {
-    auto const src = tt.trip_id_src_[trip_id];
+  for (auto const trip_idx : tt.trip_id_to_idx_) {
+    auto const src = tt.trip_id_src_[trip_idx];
     auto days = bitfield{};
     for (auto const& [t, _] : tt.trip_transport_ranges_[trip_idx]) {
       days |= tt.bitfields_[tt.transport_traffic_days_[t]];
@@ -59,12 +60,17 @@ timetable_metrics get_metrics(timetable const& tt) {
     auto const trip_idx = tt.flex_transport_trip_[ft];
     auto const tdm = transport_day_metrics(
         tt.bitfields_[tt.flex_transport_traffic_days_[ft]]);
-    for (auto const trip_id : tt.trip_ids_[trip_idx]) {
-      auto const src = tt.trip_id_src_[trip_id];
-      m.feeds_[src].first_ = std::min(m.feeds_[src].first_, tdm.first_);
-      m.feeds_[src].last_ = std::max(m.feeds_[src].last_, tdm.last_);
-      m.feeds_[src].transport_days_ += tdm.count_;
-    }
+    auto const src = tt.trip_id_src_[trip_idx];
+    m.feeds_[src].first_ = std::min(m.feeds_[src].first_, tdm.first_);
+    m.feeds_[src].last_ = std::max(m.feeds_[src].last_, tdm.last_);
+    m.feeds_[src].transport_days_ += tdm.count_;
+  }
+
+  m.routes_ = static_cast<std::uint32_t>(tt.route_location_seq_.size());
+
+  for (auto prf = profile_idx_t{0U}; prf != kNProfiles; ++prf) {
+    auto& pm = m.profiles_[prf];
+    pm.footpaths_ = tt.locations_.footpaths_out_[prf].data_.size();
   }
 
   return m;
@@ -74,7 +80,7 @@ std::string to_str(timetable_metrics const& m, timetable const& tt) {
   auto const from = std::chrono::time_point_cast<date::sys_days::duration>(
       tt.internal_interval().from_);
   auto ss = std::stringstream{};
-  ss << '[';
+  ss << R"({"feeds":[)";
   for (auto const [idx, fm] : utl::enumerate(m.feeds_)) {
     if (idx > 0U) {
       ss << ',';
@@ -84,7 +90,21 @@ std::string to_str(timetable_metrics const& m, timetable const& tt) {
         idx, from + date::days{fm.first_}, from + date::days{fm.last_},
         fm.locations_, fm.trips_, fm.transport_days_);
   }
-  ss << ']';
+  ss << R"(],"noRoutes":)" << m.routes_ << R"(,"profiles":[)";
+  auto is_first = true;
+  for (auto prf = profile_idx_t{0U}; prf != kNProfiles; ++prf) {
+    auto const& pm = m.profiles_[prf];
+    if (pm.footpaths_ == 0U) {
+      continue;
+    }
+    if (!is_first) {
+      ss << ',';
+    }
+    is_first = false;
+    ss << fmt::format(R"({{"prf":{},"noFootpaths":{}}})",
+                      static_cast<unsigned>(prf), pm.footpaths_);
+  }
+  ss << "]}";
   return ss.str();
 }
 

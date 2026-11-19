@@ -11,6 +11,8 @@ struct timetable;
 
 namespace nigiri::loader {
 
+struct import_context;
+
 extern gtfs::tz_map dummy_tz_map;
 
 struct attribute {
@@ -69,6 +71,7 @@ struct agency {
 };
 
 struct location {
+  location() = default;
   location(timetable&,
            source_idx_t,
            std::string_view id,
@@ -111,17 +114,17 @@ struct location {
   duration_t::rep get_transfer_time() const;
   void set_transfer_time(duration_t::rep);
 
-  source_idx_t src_;
+  source_idx_t src_{source_idx_t::invalid()};
   std::string_view id_;
-  translation_idx_t name_;
-  translation_idx_t platform_code_;
-  translation_idx_t stop_code_;
-  translation_idx_t description_;
-  geo::latlng pos_;
-  location_type type_;
-  location_idx_t parent_;
-  timezone_idx_t timezone_idx_;
-  duration_t transfer_time_;
+  translation_idx_t name_{kEmptyTranslation};
+  translation_idx_t platform_code_{kEmptyTranslation};
+  translation_idx_t stop_code_{kEmptyTranslation};
+  translation_idx_t description_{kEmptyTranslation};
+  geo::latlng pos_{};
+  location_type type_{location_type::kStation};
+  location_idx_t parent_{location_idx_t::invalid()};
+  timezone_idx_t timezone_idx_{timezone_idx_t::invalid()};
+  duration_t transfer_time_{0};
 
   timetable* tt_{nullptr};
   gtfs::tz_map* tz_map_{nullptr};
@@ -260,8 +263,8 @@ bool process_trip(script_runner const&, trip&);
 
 attribute_idx_t register_attribute(timetable&, attribute const&);
 provider_idx_t register_agency(timetable&, agency const&);
-location_idx_t register_location(timetable&, location const&);
-route_id_idx_t register_route(timetable&, route const&);
-trip_idx_t register_trip(timetable&, trip const&);
+location_idx_t register_location(timetable&, import_context&, location const&);
+route_id_idx_t register_route(timetable&, import_context&, route const&);
+trip_idx_t register_trip(timetable&, import_context&, trip const&);
 
 }  // namespace nigiri::loader

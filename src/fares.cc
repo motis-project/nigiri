@@ -9,6 +9,7 @@
 
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/to_vec.h"
 
 #include "nigiri/routing/journey.h"
@@ -50,8 +51,9 @@ struct leg_group {
   leg_group_idx_t g_;
 };
 
-struct transfer_rule {
-  friend std::ostream& operator<<(std::ostream& out, transfer_rule const& x) {
+struct fare_transfer_rule {
+  friend std::ostream& operator<<(std::ostream& out,
+                                  fare_transfer_rule const& x) {
     auto const& [tt, f, r] = x;
     return out << "(transfer_type=" << r.fare_transfer_type_
                << ", from_leg_group=" << leg_group{tt, f, r.from_leg_group_}
@@ -158,7 +160,7 @@ template <>
 struct fmt::formatter<nigiri::leg_rule> : ostream_formatter {};
 
 template <>
-struct fmt::formatter<nigiri::transfer_rule> : ostream_formatter {};
+struct fmt::formatter<nigiri::fare_transfer_rule> : ostream_formatter {};
 
 template <>
 struct fmt::formatter<nigiri::journey_leg> : ostream_formatter {};
@@ -217,14 +219,14 @@ location_idx_t parent(timetable const& tt, location_idx_t const l) {
 
 network_idx_t get_network(rt::frun const& a) {
   auto const& tt = *a.tt_;
-  auto const src = tt.trip_id_src_[tt.trip_ids_[a.trip_idx()].front()];
+  auto const src = tt.trip_id_src_[a.trip_idx()];
   auto const& f = tt.fares_[src];
   auto const route_id = tt.trip_route_id_[a.trip_idx()];
-  auto const it = f.route_networks_.find(route_id);
-  return it == end(f.route_networks_) ? network_idx_t::invalid() : it->second;
+  return utl::lookup(f.route_networks_, route_id)
+      .value_or(network_idx_t::invalid());
 }
 
-vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
+sparse_vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
     timetable const& tt, location_idx_t const l) {
   auto const l_areas = tt.location_areas_.at(l);
   return l_areas.empty() ? tt.location_areas_.at(parent(tt, l)) : l_areas;
@@ -242,7 +244,7 @@ bool join(timetable const& tt,
     return false;
   }
 
-  auto const src = tt.trip_id_src_[tt.trip_ids_[a.trip_idx()].front()];
+  auto const src = tt.trip_id_src_[a.trip_idx()];
   auto const& fare = tt.fares_[src];
 
   // Leg join rules require network to be defined.
@@ -297,10 +299,7 @@ joined_legs_t join_legs(timetable const& tt,
       return a_l == b_l;
     }
 
-    auto const a_id_idx = tt.trip_ids_[a.trip_idx()].front();
-    auto const b_id_idx = tt.trip_ids_[b.trip_idx()].front();
-
-    return tt.trip_id_src_[a_id_idx] == tt.trip_id_src_[b_id_idx];
+    return tt.trip_id_src_[a.trip_idx()] == tt.trip_id_src_[b.trip_idx()];
   };
 
   auto joined_legs = joined_legs_t{};
@@ -384,10 +383,9 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
   auto const from = first_trip[first_stop_range.from_];
   auto const to = last_trip[last_stop_range.to_ - 1];
 
-  auto const src =
-      first_trip.is_scheduled()
-          ? tt.trip_id_src_[tt.trip_ids_[first_trip.trip_idx()].front()]
-          : first_trip.id().src_;
+  auto const src = first_trip.is_scheduled()
+                       ? tt.trip_id_src_[first_trip.trip_idx()]
+                       : first_trip.id().src_;
   auto const& f = tt.fares_[src];
 
   if (!first_trip.is_scheduled() || !last_trip.is_scheduled()) {
@@ -513,16 +511,17 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
           for (auto const ta : tos) {
             for (auto const ftg : from_tfs) {
               for (auto const ttg : to_tfs) {
-                auto const it = f.fare_leg_rule_keys_.find(
+                auto const group = utl::lookup(
+                    f.fare_leg_rule_keys_,
                     fares::fare_leg_rule_key{.network_ = nw,
                                              .from_area_ = fa,
                                              .to_area_ = ta,
                                              .from_timeframe_group_ = ftg,
                                              .to_timeframe_group_ = ttg});
-                if (it == end(f.fare_leg_rule_keys_)) {
+                if (!group.has_value()) {
                   continue;
                 }
-                for (auto const& r : f.fare_leg_rule_groups_[it->second]) {
+                for (auto const& r : f.fare_leg_rule_groups_[*group]) {
                   if (area_set_matches(r)) {
                     trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n",
                           leg_rule{tt, f, r}, leg_rule{tt, f, x});

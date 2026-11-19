@@ -1,8 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
@@ -98,12 +97,9 @@ C2,C1,2,900
 }  // namespace
 
 TEST(routing, dijkstra) {
-  timetable tt;
-  tt.date_range_ = {sys_days{2024_y / June / 7}, sys_days{2024_y / June / 9}};
-  register_special_stations(tt);
   auto const src = source_idx_t{0U};
-  gtfs::load_timetable({}, src, dijkstra_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(dijkstra_files(), {2024_y / June / 7, 2024_y / June / 9});
 
   auto const d1_l = tt.locations_.location_id_to_idx_.at({"D1", src});
   auto const q_d1_c2 = query{
@@ -115,8 +111,7 @@ TEST(routing, dijkstra) {
                         0_minutes, 0U}},
   };
   auto dists = std::vector<std::uint16_t>{};
-  dijkstra(tt, q_d1_c2, tt.fwd_search_lb_graph_[kDefaultProfile], nullptr,
-           nullptr, dists);
+  dijkstra(tt, nullptr, q_d1_c2, direction::kForward, dists);
   EXPECT_EQ(60U, dists[d1_l.v_]);
 
   auto const d_l = tt.locations_.location_id_to_idx_.at({"D", src});
@@ -129,7 +124,6 @@ TEST(routing, dijkstra) {
                         0_minutes, 0U}},
   };
   dists = std::vector<std::uint16_t>{};
-  dijkstra(tt, q_d_c, tt.fwd_search_lb_graph_[kDefaultProfile], nullptr,
-           nullptr, dists);
+  dijkstra(tt, nullptr, q_d_c, direction::kForward, dists);
   EXPECT_EQ(60U, dists[d_l.v_]);
 }

@@ -3,6 +3,7 @@
 #include <span>
 
 #include "utl/verify.h"
+#include "utl/visit.h"
 
 #include "nigiri/types.h"
 
@@ -51,10 +52,10 @@ struct stop_seq_number_range {
         : seq_numbers_{compact{curr, inc, num_stops}} {}
 
     stop_idx_t operator*() {
-      return std::visit(
-          utl::overloaded{[](compact& c) { return c.curr_; },
-                          [](fully_specified& f) { return f.seq_[f.idx_]; }},
-          seq_numbers_);
+      return utl::visit(
+          seq_numbers_,  //
+          [](compact& c) { return c.curr_; },
+          [](fully_specified& f) { return f.seq_[f.idx_]; });
     }
 
     iterator& operator++() {
@@ -95,15 +96,14 @@ struct stop_seq_number_range {
       if (seq_numbers_.index() != o.seq_numbers_.index()) {
         return false;
       }
-      return std::visit(
-          utl::overloaded{[&](compact const& c) {
-                            return c == std::get<compact>(o.seq_numbers_);
-                          },
-                          [&](fully_specified const& f) {
-                            return f ==
-                                   std::get<fully_specified>(o.seq_numbers_);
-                          }},
-          seq_numbers_);
+      return utl::visit(
+          seq_numbers_,
+          [&](compact const& c) {
+            return c == std::get<compact>(o.seq_numbers_);
+          },
+          [&](fully_specified const& f) {
+            return f == std::get<fully_specified>(o.seq_numbers_);
+          });
     }
 
     bool operator!=(iterator o) const { return !(*this == o); }

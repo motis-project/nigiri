@@ -73,18 +73,21 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   auto& lb_graph = SearchDir == direction::kForward
                        ? tt.fwd_search_lb_graph_[prf_idx]
                        : tt.bwd_search_lb_graph_[prf_idx];
+  lb_graph.clear();
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
     if (tt.locations_.parents_[i] != location_idx_t::invalid()) {
       lb_graph.emplace_back(std::vector<footpath>{});
       continue;
     }
 
-    for (auto const& c : tt.locations_.children_[i]) {
-      add_edges(c);
-      for (auto const& cc : tt.locations_.children_[c]) {
-        add_edges(cc);
+    auto const add_descendants = [&](auto&& self,
+                                     location_idx_t const l) -> void {
+      for (auto const& c : tt.locations_.children_[l]) {
+        add_edges(c);
+        self(self, c);
       }
-    }
+    };
+    add_descendants(add_descendants, i);
     add_edges(i);
 
     for (auto const& [target, duration] : weights) {

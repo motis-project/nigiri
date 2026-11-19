@@ -1,8 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/routing/tb/preprocess.h"
@@ -18,20 +16,12 @@ using namespace std::chrono_literals;
 using namespace nigiri::test_data::hrd_timetable;
 
 timetable load_gtfs(auto const& files) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2021_y / March / 1},
-                    date::sys_days{2021_y / March / 8}};
-  register_special_stations(tt);
-  gtfs::load_timetable({}, source_idx_t{0}, files(), tt);
-  finalize(tt);
+  auto const tt =
+      loader::load(files(), {2021_y / March / 1, 2021_y / March / 8});
   return tt;
 }
 timetable load_hrd(auto const& files) {
-  timetable tt;
-  tt.date_range_ = full_period();
-  register_special_stations(tt);
-  hrd::load_timetable(source_idx_t{0U}, loader::hrd::hrd_5_20_26, files(), tt);
-  finalize(tt);
+  auto const tt = loader::load(files(), full_period());
   return tt;
 }
 

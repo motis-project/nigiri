@@ -1,11 +1,11 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
-#include "nigiri/routing/raptor/pong.h"
-#include "nigiri/routing/raptor/raptor_state.h"
-#include "nigiri/routing/search.h"
+#include "nigiri/loader/load.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
+
+#include "../../raptor_search.h"
 
 using namespace date;
 using namespace nigiri;
@@ -55,32 +55,30 @@ T1,10:30:00,10:30:00,B,2,0,0
 }  // namespace
 
 TEST(gtfs, stop_groups_equivalent_routing) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {sys_days{2020_y / January / 1},
-                    sys_days{2020_y / January / 2}};
+  auto const tt = loader::load(stop_group_files(),
+                               {2020_y / January / 1, 2020_y / January / 2});
 
-  load_timetable({}, source_idx_t{0}, stop_group_files(), tt);
-  finalize(tt);
-
-  auto search_state = routing::search_state{};
-  auto raptor_state = routing::raptor_state{};
-
+  // G1 is a dummy stop at (0,0), equivalent to A. Its "walk" to A is thousands
+  // of kilometers - far more minutes than a duration holds - and must not wrap
+  // into a footpath.
   auto const src = source_idx_t{0};
+  auto const g1 = tt.locations_.location_id_to_idx_.at({"G1", src});
+  ASSERT_FALSE(tt.locations_.equivalences_[g1].empty());
+  EXPECT_TRUE(tt.locations_.footpaths_out_[kDefaultProfile][g1].empty());
+  EXPECT_TRUE(tt.locations_.footpaths_in_[kDefaultProfile][g1].empty());
+
   auto q = routing::query{
       .start_time_ = interval<unixtime_t>{sys_days{2020_y / January / 1} + 0h,
                                           sys_days{2020_y / January / 1} + 24h},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .use_start_footpaths_ = true,
-      .start_ = {{tt.locations_.location_id_to_idx_.at({"G1", src}), 0_minutes,
-                  0U}},
+      .start_ = {{g1, 0_minutes, 0U}},
       .destination_ = {
           {tt.locations_.location_id_to_idx_.at({"G2", src}), 0_minutes, 0U}}};
 
   auto const result =
-      routing::pong_search(tt, nullptr, search_state, raptor_state,
-                           std::move(q), direction::kForward);
+      nigiri::test::search_pong(tt, nullptr, std::move(q), direction::kForward);
 
-  ASSERT_FALSE(result.journeys_->empty());
+  ASSERT_FALSE(result.empty());
 }

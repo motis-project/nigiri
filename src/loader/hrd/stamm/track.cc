@@ -1,4 +1,5 @@
 #include "nigiri/loader/hrd/stamm/track.h"
+#include "nigiri/loader/import_context.h"
 
 #include "nigiri/loader/register.h"
 
@@ -14,6 +15,7 @@ namespace nigiri::loader::hrd {
 tracks parse_track_rules(config const& c,
                          stamm& st,
                          timetable& tt,
+                         import_context& ctx,
                          std::string_view file_content) {
   auto const timer = scoped_timer{"loader.hrd.tracks"};
   auto ret = tracks{};
@@ -52,8 +54,8 @@ tracks parse_track_rules(config const& c,
           l.name_ = tt.register_translation(track_name_str);
           l.type_ = location_type::kGeneratedTrack;
           l.parent_ = parent;
-          auto const child = register_location(tt, l);
-          tt.locations_.children_[parent].emplace_back(child);
+          auto const child = register_location(tt, ctx, l);
+          ctx.children_[parent].emplace_back(child);
           return child;
         });
 

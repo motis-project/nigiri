@@ -8,6 +8,7 @@
 
 namespace nigiri {
 struct timetable;
+struct rt_timetable;
 }  // namespace nigiri
 
 namespace nigiri::routing {
@@ -70,10 +71,9 @@ void dijkstra(vecvec<NodeIdx, Edge> const& graph,
 }
 
 void dijkstra(timetable const&,
+              rt_timetable const*,
               query const&,
-              vecvec<location_idx_t, footpath> const& lb_graph,
-              bitvec_map<location_idx_t> const* has_rt,
-              vecvec<location_idx_t, footpath> const* rt_lb_graph,
+              direction search_dir,
               std::vector<std::uint16_t>& dists);
 
 }  // namespace nigiri::routing

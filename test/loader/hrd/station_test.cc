@@ -4,6 +4,7 @@
 #include "nigiri/loader/hrd/stamm/bitfield.h"
 #include "nigiri/loader/hrd/stamm/station.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
+#include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
 
 using namespace nigiri;
@@ -36,6 +37,7 @@ constexpr auto const station_geo_file_content = R"(
 TEST(hrd, parse_station) {
   for (auto const& c : configs) {
     timetable tt;
+    auto ctx = loader::import_context{tt};
     auto const src = source_idx_t{0U};
     auto st =
         stamm{tt,
@@ -45,9 +47,9 @@ TEST(hrd, parse_station) {
                        0U, tz_offsets{.seasons_ = {}, .offset_ = 0_minutes}}}},
               src};
     auto const locations =
-        parse_stations(c, src, tt, st, stations_file_content,
+        parse_stations(c, src, tt, ctx, st, stations_file_content,
                        station_geo_file_content, station_metabhf_content);
-    loader::finalize(tt);
+    loader::finalize(tt, ctx);
 
     auto const l1 = tt.find(location_id{"0000001", src});
     ASSERT_TRUE(l1.has_value());

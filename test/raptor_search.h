@@ -1,3 +1,5 @@
+#pragma once
+
 #include "nigiri/routing/journey.h"
 
 #include "nigiri/routing/pareto_set.h"
@@ -50,6 +52,11 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            std::string_view to,
                                            std::string_view time,
                                            direction const search_dir);
+
+pareto_set<routing::journey> search_pong(timetable const&,
+                                         rt_timetable const*,
+                                         routing::query,
+                                         direction = direction::kForward);
 
 pareto_set<routing::journey> raptor_intermodal_search(
     timetable const&,

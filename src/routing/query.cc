@@ -23,19 +23,13 @@ bool query::operator==(query const& o) const {
              std::tuple_size_v<decltype(cista::to_tuple(*this))>>());
 }
 
-void sanitize_query(query& q) {
-  if (q.max_travel_time_.count() < 0 || q.max_travel_time_ > kMaxTravelTime) {
-    q.max_travel_time_ = kMaxTravelTime;
-  }
-}
-
 void sanitize_via_stops(timetable const& tt, query& q) {
   while (q.via_stops_.size() >= 2) {
     auto updated = false;
     for (auto i = 0U; i < q.via_stops_.size() - 1; ++i) {
       auto& a = q.via_stops_[i];
       auto& b = q.via_stops_[i + 1];
-      if (matches(tt, location_match_mode::kEquivalent, a.location_,
+      if (matches(tt, nullptr, location_match_mode::kEquivalent, a.location_,
                   b.location_)) {
         a.stay_ += b.stay_;
         q.via_stops_.erase(q.via_stops_.begin() + i + 1);
@@ -56,14 +50,19 @@ void query::flip_dir() {
   std::reverse(begin(via_stops_), end(via_stops_));
 }
 
-void query::sanitize(timetable const& tt) {
+query& query::sanitize(timetable const& tt) {
   utl::verify(start_match_mode_ != location_match_mode::kIntermodal ||
                   !use_start_footpaths_,
               "intermodal start is incompatible with use_start_footpaths");
-  sanitize_query(*this);
+  if (max_travel_time_.count() < 0 || max_travel_time_ > kMaxTravelTime) {
+    max_travel_time_ = kMaxTravelTime;
+  }
   sanitize_via_stops(tt, *this);
+  utl::verify(via_stops_.size() <= kMaxVias,
+              "too many via stops: {}, limit: {}", via_stops_.size(), kMaxVias);
   utl::sort(start_);
   utl::sort(destination_);
+  return *this;
 }
 
 }  // namespace nigiri::routing

@@ -4,7 +4,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -75,12 +75,8 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 
 TEST(rt, gtfs_rt_ripta) {
   // Load static timetable.
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / May / 10},
-                    date::sys_days{2024_y / May / 20}};
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto const tt =
+      loader::load(test_files(), {2024_y / May / 10, 2024_y / May / 20});
 
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / May / 11});

@@ -4,6 +4,7 @@
 
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/lookup.h"
 #include "utl/overloaded.h"
 #include "utl/to_vec.h"
 
@@ -31,13 +32,14 @@ std::vector<file> stamm::load_files(config const& c, dir const& d) {
 
 stamm::stamm(config const& c,
              timetable& tt,
+             import_context& ctx,
              dir const& d,
              source_idx_t const src)
     : tt_{tt}, src_{src} {
   auto const files = load_files(c, d);
   timezones_ = parse_timezones(c, tt, files.at(TIMEZONES).data());
   locations_ =
-      parse_stations(c, src, tt, *this, files.at(STATIONS).data(),
+      parse_stations(c, src, tt, ctx, *this, files.at(STATIONS).data(),
                      files.at(COORDINATES).data(), files.at(FOOTPATHS).data());
   bitfields_ = parse_bitfields(c, files.at(BITFIELDS).data());
   categories_ = parse_categories(c, files.at(CATEGORIES).data());
@@ -45,7 +47,7 @@ stamm::stamm(config const& c,
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
   date_range_ = parse_interval(files.at(BASIC_DATA).data());
-  tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
+  tracks_ = parse_track_rules(c, *this, tt, ctx, files.at(TRACKS).data());
 }
 
 stamm::stamm(timetable& tt, timezone_map_t&& m, source_idx_t const src)
@@ -69,12 +71,8 @@ translation_idx_t stamm::resolve_direction(direction_info_t const& info) {
   return info.apply(utl::overloaded{
       [&](utl::cstr const str) {
         return utl::get_or_create(string_directions_, str.view(), [&]() {
-          auto const it = directions_.find(str.view());
-          if (it == end(directions_)) {
-            return kEmptyTranslation;
-          } else {
-            return it->second;
-          }
+          return utl::lookup(directions_, str.view())
+              .value_or(kEmptyTranslation);
         });
       },
       [&](eva_number const eva) {
@@ -97,8 +95,9 @@ bitfield stamm::resolve_bitfield(unsigned i) const {
 }
 
 provider_idx_t stamm::resolve_provider(utl::cstr s) {
-  auto const it = providers_.find(s.view());
-  if (it == end(providers_)) {
+  if (auto const p = utl::lookup(providers_, s.view())) {
+    return *p;
+  } else {
     log(log_lvl::error, "nigiri.loader.hrd.provider",
         "creating new provider for missing {}", s.view());
     auto const idx = provider_idx_t{tt_.providers_.size()};
@@ -111,8 +110,6 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
                  .src_ = source_idx_t{0}});
     providers_[s.to_str()] = idx;
     return idx;
-  } else {
-    return it->second;
   }
 }
 
@@ -126,8 +123,8 @@ std::pair<timezone_idx_t, tz_offsets> const& stamm::get_tz(
 }
 
 attribute_idx_t stamm::resolve_attribute(utl::cstr s) const {
-  auto const it = attributes_.find(s.view());
-  return it == end(attributes_) ? attribute_idx_t::invalid() : it->second;
+  return utl::lookup(attributes_, s.view())
+      .value_or(attribute_idx_t::invalid());
 }
 
 location_idx_t stamm::resolve_track(track_rule_key const& k,

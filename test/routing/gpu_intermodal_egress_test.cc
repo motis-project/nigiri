@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -80,11 +80,8 @@ T4,11:00:00,11:00:00,C,2,0,0
 // compares strictly and passes on one that compares loosely, like the CPU.
 // Without CUDA it still exercises the CPU path, which has always been loose.
 TEST(routing, gpu_intermodal_egress_at_bound) {
-  timetable tt;
-  tt.date_range_ = {sys_days{2024_y / June / 16}, sys_days{2024_y / June / 19}};
-  register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+  auto tt =
+      loader::load(test_files(), {2024_y / June / 16, 2024_y / June / 19});
 
   auto const A = tt.find(location_id{"A", source_idx_t{0}}).value();
   auto const A2 = tt.find(location_id{"A2", source_idx_t{0}}).value();

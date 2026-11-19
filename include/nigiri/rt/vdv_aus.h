@@ -44,6 +44,7 @@ struct statistics {
   std::uint32_t resolved_stops_{0U};
 
   std::uint32_t runs_without_stops_{0U};
+  std::uint32_t runs_outside_rt_interval_{0U};
 
   std::uint32_t cancelled_runs_{0U};
 
@@ -74,7 +75,8 @@ private:
     explicit vdv_stop(location_idx_t,
                       std::string_view id,
                       pugi::xml_node,
-                      xml_format);
+                      xml_format,
+                      bool is_recorded);
 
     std::optional<std::pair<unixtime_t, event_type>> get_event(
         std::optional<event_type> et = std::nullopt) const;
@@ -85,6 +87,7 @@ private:
     std::optional<std::string_view> dep_track_, arr_track_;
     bool in_forbidden_, out_forbidden_, passing_through_, arr_canceled_,
         dep_canceled_;
+    bool is_recorded_;
   };
 
   struct run_id {
