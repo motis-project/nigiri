@@ -93,7 +93,7 @@ routing_result pong(timetable const& tt,
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
       gpu::gpu_raptor<flip(SearchDir), kPruneWithPingBounds>,
-      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
+      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne, false>>;
 
   s_state.results_.clear();
 
