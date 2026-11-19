@@ -21,6 +21,7 @@
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
 #include "utl/verify.h"
+#include "utl/visit.h"
 #include "utl/zip.h"
 
 #include "nigiri/logging.h"
@@ -89,23 +90,36 @@ std::optional<geo::latlng> parse_coord(std::string const& str) {
   return latlng{std::stod(tokens[0]), std::stod(tokens[1])};
 }
 
+// n_queries whose start times keep `margin` to both ends of the timetable, so
+// interval extensions and long journeys stay inside it
 void generate_queries(
     std::vector<nigiri::query_generation::start_dest_query>& queries,
     std::uint32_t n_queries,
     nigiri::timetable const& tt,
     query_generation::generator_settings const& gs,
-    std::int64_t const seed) {
+    std::int64_t const seed,
+    duration_t const margin) {
   auto qg = seed > -1
                 ? query_generation::generator{tt, gs,
                                               static_cast<std::uint32_t>(seed)}
                 : query_generation::generator{tt, gs};
+  auto const tt_itv = tt.external_interval();
+  auto const inside = [&](routing::start_time_t const& start) {
+    auto const itv = utl::visit(
+        start, [](interval<unixtime_t> const i) { return i; },
+        [](unixtime_t const t) { return interval<unixtime_t>{t, t}; });
+    return itv.from_ >= tt_itv.from_ + margin && itv.to_ <= tt_itv.to_ - margin;
+  };
   queries.reserve(n_queries);
-  for (auto i = 0U; i != n_queries; ++i) {
+  for (auto i = 0U; queries.size() != n_queries && i != 100U * n_queries; ++i) {
     auto const sdq = qg.random_query();
-    if (sdq.has_value()) {
+    if (sdq.has_value() && inside(sdq->q_.start_time_)) {
       queries.emplace_back(sdq.value());
     }
   }
+  utl::verify(queries.size() == n_queries,
+              "only {} of {} queries keep {} minutes to the timetable's ends",
+              queries.size(), n_queries, margin.count());
 }
 
 // Range-RAPTOR start time == first trip's departure time
@@ -821,6 +835,7 @@ int main(int argc, char* argv[]) {
 
   auto tt_path = std::filesystem::path{};
   auto n_queries = std::uint32_t{100U};
+  auto day_margin = duration_t::rep{};
   auto gs = query_generation::generator_settings{};
   auto interval_size = duration_t::rep{};
   auto bbox_str = std::string{};
@@ -894,7 +909,11 @@ int main(int argc, char* argv[]) {
       ("seed,s", bpo::value<std::int64_t>(&seed)->default_value(seed),
        "query generator RNG seed, -1 for a random seed")  //
       ("num_queries,n", bpo::value(&n_queries)->default_value(n_queries),
-       "number of queries to generate/process")(
+       "number of queries to generate/process")  //
+      ("day_margin",
+       bpo::value<duration_t::rep>(&day_margin)->default_value(0U),
+       "minutes the generated start intervals keep to both ends of the "
+       "timetable, e.g. 4320 (three days) for room to extend and arrive")(
           "interval_size,i",
           bpo::value<duration_t::rep>(&interval_size)->default_value(60U, "60"),
           "the initial size of the search interval in minutes, set to 0 for "
@@ -1144,7 +1163,7 @@ int main(int argc, char* argv[]) {
 
     auto& fwd_qs = mode_queries[mode];
     if (fwd_qs.empty()) {
-      generate_queries(fwd_qs, n_queries, tt, rs, seed);
+      generate_queries(fwd_qs, n_queries, tt, rs, seed, duration_t{day_margin});
     }
 
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
