@@ -99,3 +99,84 @@ TEST(routing, raptor_backward) {
 
   EXPECT_EQ(std::string_view{bwd_journeys}, to_string(tt, results));
 }
+
+namespace {
+
+// Range query A -> D, start times 10:30 and 10:00 (processed in this order).
+// At 10:30, the loop trip T1 (A -> B -> A) leaves a round-1 label at A
+// (14:00 + transfer time) before R2 sets the arrival at D to 11:00.
+// round_times_ survive into the 10:00 iteration while best_ is cleared, and
+// the start label lives in round_times_[0] only, so best_[A] at k = 1 is the
+// stale 14:02. A route-level lower bound check that takes the boarding time
+// from best_ (14:02 + lb(D) = 0 is not better than 11:00) skips R2 and loses
+// the 10:00 -> 10:30 journey. Boarding uses round_times_[k - 1] (10:00).
+mem_dir range_query_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,2.0,3.0,,
+D,D,,6.0,7.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,1,,,3
+R2,DB,2,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S1,T1,,
+R2,S1,T2,,
+R2,S1,T3,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T1,10:30:00,10:30:00,A,0
+T1,10:45:00,10:45:00,B,1
+T1,14:00:00,14:00:00,A,2
+T2,10:00:00,10:00:00,A,0
+T2,10:30:00,10:30:00,D,1
+T3,10:30:00,10:30:00,A,0
+T3,11:00:00,11:00:00,D,1
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+)");
+}
+
+constexpr auto const expected_range_query = R"(
+[2019-05-01 08:00, 2019-05-01 08:30]
+TRANSFERS: 0
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (D, D) [2019-05-01 08:30]
+leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:30]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=2, day=2019-05-01, id=T2, src=0}]
+   1: D       D............................................... a: 01.05 08:30 [01.05 10:30]
+
+[2019-05-01 08:30, 2019-05-01 09:00]
+TRANSFERS: 0
+     FROM: (A, A) [2019-05-01 08:30]
+       TO: (D, D) [2019-05-01 09:00]
+leg 0: (A, A) [2019-05-01 08:30] -> (D, D) [2019-05-01 09:00]
+   0: A       A...............................................                               d: 01.05 08:30 [01.05 10:30]  [{name=2, day=2019-05-01, id=T3, src=0}]
+   1: D       D............................................... a: 01.05 09:00 [01.05 11:00]
+
+)";
+
+}  // namespace
+
+TEST(routing, route_lb_range_query_uses_round_times) {
+  auto const tt =
+      loader::load(range_query_files(), {2019_y / May / 1, 2019_y / May / 2});
+  // 10:00 - 10:31 Europe/Berlin (CEST)
+  auto const results = raptor_search(
+      tt, nullptr, "A", "D",
+      interval{unixtime_t{sys_days{2019_y / May / 1}} + 8_hours,
+               unixtime_t{sys_days{2019_y / May / 1}} + 8_hours + 31_minutes});
+  EXPECT_EQ(expected_range_query, to_string(tt, results));
+}
