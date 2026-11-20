@@ -444,13 +444,13 @@ void optimize_transfers(timetable const& tt,
         trip_at(rt::frun{tt, rtt, ree_to.r_}[ree_to.stop_range_.from_],
                 event_type::kDep));
     auto penalty_best = std::numeric_limits<double>::max();
-    auto same_place_enter = stop_idx_t{0U};
+    auto min_enter = stop_idx_t{0U};
     for (auto stp_from : fr_from) {
       if (!stp_from.out_allowed()) {
         continue;
       }
       auto const from_trip = trip_at(stp_from, event_type::kArr);
-      auto row_same_place_enter = same_place_enter;
+      auto next_min_enter = min_enter;
       for (auto stp_to : fr_to) {
         if (!stp_to.in_allowed()) {
           continue;
@@ -474,14 +474,13 @@ void optimize_transfers(timetable const& tt,
         }
         if (matches(tt, nullptr, location_match_mode::kEquivalent,
                     stp_from.get_location_idx(), stp_to.get_location_idx())) {
-          row_same_place_enter =
-              std::max(row_same_place_enter, stp_to.stop_idx_);
+          next_min_enter = std::max(next_min_enter, stp_to.stop_idx_);
           if (stp_from.stop_idx_ < current_exit &&
               stp_to.stop_idx_ > current_enter) {
             current_is_double_visit = true;
           }
         }
-        if (stp_to.stop_idx_ < same_place_enter) {
+        if (stp_to.stop_idx_ < min_enter) {
           continue;
         }
         auto const to_trip = trip_at(stp_to, event_type::kDep);
@@ -507,7 +506,7 @@ void optimize_transfers(timetable const& tt,
           penalty_best = penalty;
         }
       }
-      same_place_enter = row_same_place_enter;
+      min_enter = next_min_enter;
     }
 
     if (!current_is_double_visit && penalty_current <= penalty_best) {
