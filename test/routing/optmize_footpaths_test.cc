@@ -471,3 +471,31 @@ TEST(routing, optimize_transfers_no_double_visit_loop) {
   ASSERT_EQ(1U, res.size());
   EXPECT_EQ(loc_idx(tt, "S2"), begin(res)->legs_.back().from_);
 }
+
+// T1 loops H -> B -> K2 -> S. The change T1 -> T2 moves from B to S, so T1
+// passes station K again where T0 was left: board T1 at K2 instead of H.
+TEST(routing, optimize_transfers_no_double_visit_over_two_changes) {
+  auto const tt = test::load_feeds_with_walks(
+      {test::feed(
+          {{"A", 50.0, 6.0},
+           {"K", 50.1, 6.0, "", true},
+           {"K1", 50.1001, 6.0, "K"},
+           {"K2", 50.1002, 6.0, "K"},
+           {"H", 50.2, 6.0},
+           {"B", 50.3, 6.0},
+           {"S", 50.4, 6.0},
+           {"Z", 50.5, 6.0}},
+          {{"T0", "R0", {{"A", "04:30"}, {"K1", "04:59"}}},
+           {"T1",
+            "R1",
+            {{"H", "05:14"}, {"B", "05:15"}, {"K2", "05:17"}, {"S", "05:20"}}},
+           {"T2", "R2", {{"S", "05:39"}, {"Z", "05:58"}}}},
+          "")},
+      {{"K1", "K2", 4}, {"K1", "H", 9}, {"B", "S", 3}});
+  auto const res = test::search_at(tt, "A", "Z", "04:30");
+  ASSERT_EQ(1U, res.size());
+  auto const& legs = begin(res)->legs_;
+  ASSERT_EQ(5U, legs.size());
+  EXPECT_EQ(loc_idx(tt, "K2"), legs[2].from_);
+  EXPECT_EQ(loc_idx(tt, "S"), legs[2].to_);
+}

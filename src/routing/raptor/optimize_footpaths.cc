@@ -498,7 +498,13 @@ void optimize_footpaths(timetable const& tt,
   optimize_initial_start_footpath(tt, rtt, q, j);
   optimize_last_arrival(tt, rtt, q, j);
   optimize_final_egress_footpath(tt, rtt, q, j);
-  optimize_transfers(tt, rtt, q, j);
+  for (auto i = 0U; i != j.transfers_ + 1U; ++i) {
+    auto const before = j.legs_;
+    optimize_transfers(tt, rtt, q, j);
+    if (j.legs_ == before) {
+      break;
+    }
+  }
 }
 
 }  // namespace nigiri::routing
