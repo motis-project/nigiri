@@ -1,11 +1,13 @@
 #include "nigiri/routing/raptor/reconstruct.h"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 
 #include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 
+#include "nigiri/common/it_range.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/search_location.h"
@@ -426,22 +428,14 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
-    auto penalty_best = get_penalty(
-        tt,
-        adjusted_transfer_time(q.transfer_time_settings_,
-                               get<footpath>(leg_footpath.uses_).duration()),
-        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.to_, leg_to.from_,
-        trip_at(rt::frun{tt, rtt, ree_from.r_}[static_cast<stop_idx_t>(
-                    ree_from.stop_range_.to_ - 1U)],
-                event_type::kArr),
-        trip_at(rt::frun{tt, rtt, ree_to.r_}[ree_to.stop_range_.from_],
-                event_type::kDep));
+    auto penalty_best = std::numeric_limits<double>::max();
+    auto min_enter = stop_idx_t{0U};
     for (auto stp_from : fr_from) {
       if (!stp_from.out_allowed()) {
         continue;
       }
       auto const from_trip = trip_at(stp_from, event_type::kArr);
-      for (auto stp_to : fr_to) {
+      for (auto stp_to : it_range{fr_to.rbegin(), fr_to.rend()}) {
         if (!stp_to.in_allowed()) {
           continue;
         }
@@ -461,6 +455,13 @@ void optimize_transfers(timetable const& tt,
         auto const arr_fp = arr + fp_dur;
         if (arr_fp > dep) {
           continue;
+        }
+        if (stp_to.stop_idx_ < min_enter) {
+          continue;
+        }
+        if (matches(tt, nullptr, location_match_mode::kEquivalent,
+                    stp_from.get_location_idx(), stp_to.get_location_idx())) {
+          min_enter = static_cast<stop_idx_t>(stp_to.stop_idx_ + 1U);
         }
         auto const to_trip = trip_at(stp_to, event_type::kDep);
         auto const penalty =
@@ -497,7 +498,13 @@ void optimize_footpaths(timetable const& tt,
   optimize_initial_start_footpath(tt, rtt, q, j);
   optimize_last_arrival(tt, rtt, q, j);
   optimize_final_egress_footpath(tt, rtt, q, j);
-  optimize_transfers(tt, rtt, q, j);
+  for (auto i = 0U; i != j.transfers_ + 1U; ++i) {
+    auto const before = j.legs_;
+    optimize_transfers(tt, rtt, q, j);
+    if (j.legs_ == before) {
+      break;
+    }
+  }
 }
 
 }  // namespace nigiri::routing
