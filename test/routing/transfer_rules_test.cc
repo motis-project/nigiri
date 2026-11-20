@@ -361,10 +361,10 @@ TEST(transfer_rules, one_to_all_reaches_stop_without_changes_by_exception) {
 
 // A profile changes at a virtual location in its transfer time, as the
 // default profile does (between the locations of a stop: the stop's own time).
-// T0 and T1 (route R) change at S in 1 min through the R -> R rule; at X, 1 min
-// is too short for X's own 2 min: every profile changes at S. FA (RF1) -> FC
-// (RF3) at their location of U (3 min) is too short for the RF1 -> RF3 rule (5
-// min), not for U's 2 min.
+// T0 and T1 (route R) change at S in 1 min through the R -> R rule, at X in
+// X's own 2 min: every profile changes at S. FA (RF1) -> FC (RF3) at their
+// location of U (3 min) is too short for the RF1 -> RF3 rule (5 min), not for
+// U's 2 min.
 TEST(transfer_rules, profile_changes_in_virtual_location_transfer_time) {
   constexpr auto const kProfile = profile_idx_t{1U};
   auto tt = load_feeds(
@@ -373,7 +373,7 @@ TEST(transfer_rules, profile_changes_in_virtual_location_transfer_time) {
              {"X", 64.2, 23.0},
              {"E", 64.3, 23.0}},
             {{"T0", "R", {{"A", "10:00"}, {"S", "10:10"}, {"X", "10:20"}}},
-             {"T1", "R", {{"S", "10:11"}, {"X", "10:21"}, {"E", "10:40"}}}},
+             {"T1", "R", {{"S", "10:11"}, {"X", "10:25"}, {"E", "10:40"}}}},
             "S,S,2,120,,,,\n"
             "S,S,2,60,R,R,,\n")});
   ASSERT_LT(0U, n_virts(tt));

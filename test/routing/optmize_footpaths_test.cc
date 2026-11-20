@@ -377,15 +377,15 @@ TEST(routing, optimize_transfers_keeps_station_bonus_of_same_stop_change) {
   EXPECT_EQ(loc_idx(tt, "X"), begin(res)->legs_.front().to_);
 }
 
-// T0 and T1 share A, F and station P. Every change takes 2 min with 1 min
-// buffer, and P is the biggest station, but changing there means walking from
-// P1 to P2: stay at A instead.
+// T0 and T1 share the platforms A, F and station P. Every change takes 2 min
+// with 1 min buffer, and P is the biggest station, but changing there means
+// walking from P1 to P2: stay on platform A instead.
 TEST(routing, optimize_transfers_prefers_same_stop_over_platform_change) {
   auto const tt = test::load_feeds_with_walks(
       {test::feed(
           {{"R", 50.0, 6.0},
-           {"A", 50.1, 6.0},
-           {"F", 50.2, 6.0},
+           {"A", 50.1, 6.0, "", false, "1"},
+           {"F", 50.2, 6.0, "", false, "1"},
            {"P", 50.3, 6.0, "", true},
            {"P1", 50.3001, 6.0, "P"},
            {"P2", 50.3002, 6.0, "P"},

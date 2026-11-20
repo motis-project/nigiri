@@ -88,6 +88,7 @@ struct stop_def {
   double lng_;
   std::string_view parent_{};
   bool is_station_{false};
+  std::string_view platform_code_{};
 };
 
 struct trip_def {
@@ -128,10 +129,11 @@ inline std::string feed(std::vector<stop_def> const& stops,
     }
   }
   s += "\n# stops.txt\n"
-       "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station\n";
+       "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,"
+       "platform_code\n";
   for (auto const& x : stops) {
-    s += fmt::format("{},{},{},{},{},{}\n", x.id_, x.id_, x.lat_, x.lng_,
-                     x.is_station_ ? 1 : 0, x.parent_);
+    s += fmt::format("{},{},{},{},{},{},{}\n", x.id_, x.id_, x.lat_, x.lng_,
+                     x.is_station_ ? 1 : 0, x.parent_, x.platform_code_);
   }
 
   auto routes = extra_routes;
