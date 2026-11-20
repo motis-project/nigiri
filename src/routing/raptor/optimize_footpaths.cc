@@ -327,7 +327,10 @@ double get_penalty(timetable const& tt,
                    trip_idx_t const from_trip,
                    trip_idx_t const to_trip) {
   // Basic weight: footpath duration.
-  auto weight = static_cast<double>(duration.count());
+  auto weight =
+      from == to && tt.locations_.platform_codes_[from] != kEmptyTranslation
+          ? 0.0
+          : static_cast<double>(duration.count());
 
   // Adjust for station size.
   if (matches(tt, nullptr, location_match_mode::kEquivalent, from, to)) {
