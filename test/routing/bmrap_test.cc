@@ -10,6 +10,8 @@
 
 #include "fmt/format.h"
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/routing/get_fastest_direct.h"
@@ -712,6 +714,33 @@ TEST(bmrap, restriction_ties_take_fewest_trips) {
 // get_fastest_direct() scales the footpath distance by fastest_direct_factor_
 // in 16 bit minutes: benchmarks disable the cap with a large factor, which
 // wrapped around to a tiny bound, and every engine filtered all journeys.
+// The anchors of one step of a Europe-wide query (2026-11-24, step 12:30). The
+// pong moved one of them (12:29) before the step. It must not cap the anchor
+// 13:27 -> 16:28: a journey departing at 12:32 with 7 trips (A(J) that anchor,
+// deadline 17:59) departs after it, and the next step (12:33) no longer covers
+// 12:32. Capped by it, the run allowed 6 trips and pruned the journey.
+TEST(bmrap, trip_budget_cap_skips_anchors_before_the_step) {
+  using routing::bmrap_detail::anchor;
+  auto const day = unixtime_t{sys_days{2026_y / November / 24}};
+  auto const at = [&](int const h, int const m) {
+    return day + std::chrono::hours{h} + std::chrono::minutes{m};
+  };
+  auto const anchors = std::vector<anchor>{{at(12, 32), at(15, 28), 8U},
+                                           {at(12, 29), at(15, 28), 7U},
+                                           {at(12, 29), at(16, 28), 5U},
+                                           {at(13, 27), at(16, 28), 6U},
+                                           {at(13, 27), at(17, 28), 5U}};
+  auto const runs = routing::bmrap_detail::bound_runs<direction::kForward>(
+      anchors, /*horizon=*/at(12, 29), /*budget=*/10U);
+  ASSERT_EQ(anchors.size(), runs.size());
+  // trip_budget() of each, capped only by anchors departing from 12:30 on
+  EXPECT_EQ((routing::bmrap_detail::bound_run{at(16, 56), 10U}), runs[0]);
+  EXPECT_EQ((routing::bmrap_detail::bound_run{at(16, 58), 9U}), runs[1]);
+  EXPECT_EQ((routing::bmrap_detail::bound_run{at(18, 28), 7U}), runs[2]);
+  EXPECT_EQ((routing::bmrap_detail::bound_run{at(17, 59), 7U}), runs[3]);
+  EXPECT_EQ((routing::bmrap_detail::bound_run{at(19, 29), 5U}), runs[4]);
+}
+
 namespace {
 
 constexpr auto const kFootpathGTFS = R"(
@@ -1059,6 +1088,54 @@ TEST(bmrap, realization_takes_earliest_connections) {
         << (fwd ? "" : " (arriveBy)");
     EXPECT_EQ(fwd, r.algo_stats_.at("bmrapp_realized") > 0U);
   }
+}
+
+// An anchor is realized like any other result: the mc pong's legs are the
+// latest connections (its breadcrumbs pin the labels), the realization's the
+// earliest. PONG rebuilds its legs from the round times and gets the earliest
+// as well, so for the 2-criteria journey O 10:00 -> D 11:30 (the only one,
+// an anchor) BMRAPP returns PONG's legs.
+TEST(bmrap, anchors_are_realized_as_pong_reports_them) {
+  auto const tt = loader::load(
+      mem_dir::read(std::string{kRealizeGTFS}),
+      {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}});
+  auto const loc = [&](char const* id) {
+    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
+  };
+  auto const day = unixtime_t{sys_days{2024_y / June / 19}};
+  auto q = routing::query{};
+  q.start_time_ = interval<unixtime_t>{day + 8h, day + 8h + 1min};
+  q.start_ = {{loc("O"), 0_minutes, 0U}};
+  q.destination_ = {{loc("D"), 0_minutes, 0U}};
+  q.min_connection_count_ = 1U;
+  q.extend_interval_later_ = true;
+
+  auto const find = [&](pareto_set<routing::journey> const& js) {
+    auto const j = utl::find_if(js, [&](routing::journey const& x) {
+      return x.departure_time() == day + 8h &&
+             x.arrival_time() == day + 9h + 30min;
+    });
+    EXPECT_NE(j, end(js)) << "O 10:00 -> D 11:30 not found";
+    return j == end(js) ? nullptr : &*j;
+  };
+
+  auto pong_ss = routing::search_state{};
+  auto pong_as = routing::raptor_state{};
+  auto const pong = routing::pong_search(tt, nullptr, pong_ss, pong_as, q,
+                                         direction::kForward);
+  auto ss = routing::search_state{};
+  auto as = routing::raptor_state{};
+  auto ms = routing::basic_mcraptor_state<routing::arr_non_transit_criteria>{};
+  auto const r =
+      routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
+          tt, nullptr, ss, as, ms, q, direction::kForward);
+
+  auto const* const p = find(*pong.journeys_);
+  auto const* const b = find(*r.journeys_);
+  ASSERT_TRUE(p != nullptr && b != nullptr);
+  EXPECT_EQ(p->legs_, b->legs_);
+  EXPECT_EQ(r.journeys_->size(), r.algo_stats_.at("bmrapp_realized"));
+  EXPECT_EQ(0U, r.algo_stats_.at("bmrapp_unrealized"));
 }
 
 // Ties for the guided realization: equal journeys through different stops

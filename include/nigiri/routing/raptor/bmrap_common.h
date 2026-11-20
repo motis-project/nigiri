@@ -447,6 +447,32 @@ bmrap_bounds reach_matrix(timetable const& tt,
 // capped at its trip budget. The runs are reduced to the front over
 // (deadline, budget) and share one rRAPTOR, whose accumulated maximum is the
 // union. `horizon`: the far end of the main search.
+// compute_bounds()'s runs before reduction: per anchor its deadline and trip
+// budget. The paper's cap: a journey with as many trips as an earlier-arriving
+// anchor has that one (or a better one) as A(J). A journey departing after
+// that anchor is found by a later step, which no longer has it - if the
+// anchor departs at or after the step (horizon + 1): the pong can move one
+// before it, and the next step starts after the step's first departure.
+using bound_run = std::pair<unixtime_t, std::uint8_t>;
+template <direction SearchDir>
+std::vector<bound_run> bound_runs(std::vector<anchor> const& anchors,
+                                  unixtime_t const horizon,
+                                  std::uint8_t const budget) {
+  auto runs = std::vector<bound_run>{};
+  runs.reserve(anchors.size());
+  for (auto const& a : anchors) {
+    auto b = trip_budget(a.trips_, budget);
+    for (auto const& x : anchors) {
+      if (x.trips_ > a.trips_ && is_better<SearchDir>(x.found_, a.found_) &&
+          is_better<SearchDir>(horizon, x.anchored_)) {
+        b = std::min(b, static_cast<std::uint8_t>(x.trips_ - 1U));
+      }
+    }
+    runs.emplace_back(anchor_deadline(a), b);
+  }
+  return runs;
+}
+
 template <direction SearchDir, bool Rt, typename AlgoState>
 bmrap_bounds compute_bounds(timetable const& tt,
                             rt_timetable const* rtt,
@@ -464,21 +490,8 @@ bmrap_bounds compute_bounds(timetable const& tt,
     return is_better<kPruneDir>(a, b);
   };
 
-  using run_t = std::pair<unixtime_t, std::uint8_t>;
-  auto runs = std::vector<run_t>{};
-  runs.reserve(anchors.size());
-  // The paper's cap: a journey with as many trips as an earlier-arriving
-  // anchor has that one (or a better one) as A(J). A journey departing after
-  // that anchor is found by a later step, which no longer has it.
-  for (auto const& a : anchors) {
-    auto b = trip_budget(a.trips_, budget);
-    for (auto const& x : anchors) {
-      if (x.trips_ > a.trips_ && is_better<SearchDir>(x.found_, a.found_)) {
-        b = std::min(b, static_cast<std::uint8_t>(x.trips_ - 1U));
-      }
-    }
-    runs.emplace_back(anchor_deadline(a), b);
-  }
+  using run_t = bound_run;
+  auto runs = bound_runs<SearchDir>(anchors, horizon, budget);
   // most trips first: a run is redundant if a kept one is at least as loose
   std::sort(begin(runs), end(runs), [&](run_t const& a, run_t const& b) {
     return a.second != b.second ? a.second > b.second
