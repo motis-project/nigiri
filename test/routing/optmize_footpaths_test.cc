@@ -447,3 +447,27 @@ TEST(routing, optimize_transfers_same_direction_prefers_bigger_station) {
   ASSERT_EQ(1U, res.size());
   EXPECT_EQ(loc_idx(tt, "O"), begin(res)->legs_.front().to_);
 }
+
+// T1 loops S1 -> L -> S2 through station S. Boarding at S1 is the shorter
+// change, but T1 then passes S again: board at S2.
+TEST(routing, optimize_transfers_no_double_visit_loop) {
+  auto const tt = test::load_feeds_with_walks(
+      {test::feed({{"R", 50.0, 6.0},
+                   {"S", 50.1, 6.0, "", true},
+                   {"S1", 50.1001, 6.0, "S"},
+                   {"S2", 50.1002, 6.0, "S"},
+                   {"L", 50.2, 6.0},
+                   {"Z", 50.3, 6.0}},
+                  {{"T0", "R0", {{"R", "10:00"}, {"S1", "10:10"}}},
+                   {"T1",
+                    "R1",
+                    {{"S1", "10:30"},
+                     {"L", "10:35"},
+                     {"S2", "10:40"},
+                     {"Z", "10:50"}}}},
+                  "")},
+      {{"S1", "S2", 3}});
+  auto const res = test::search_at(tt, "R", "Z", "10:00");
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(loc_idx(tt, "S2"), begin(res)->legs_.back().from_);
+}

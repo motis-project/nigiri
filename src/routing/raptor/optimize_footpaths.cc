@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <limits>
 #include <optional>
-#include <tuple>
 
 #include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 
+#include "nigiri/common/it_range.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/search_location.h"
@@ -428,21 +428,6 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
-    auto const current = std::tuple{leg_from, leg_footpath, leg_to};
-    auto const current_exit =
-        static_cast<stop_idx_t>(ree_from.stop_range_.to_ - 1U);
-    auto const current_enter = ree_to.stop_range_.from_;
-    auto current_is_double_visit = false;
-    auto const penalty_current = get_penalty(
-        tt,
-        adjusted_transfer_time(q.transfer_time_settings_,
-                               get<footpath>(leg_footpath.uses_).duration()),
-        leg_to.dep_time_ - leg_footpath.arr_time_, leg_from.to_, leg_to.from_,
-        trip_at(rt::frun{tt, rtt, ree_from.r_}[static_cast<stop_idx_t>(
-                    ree_from.stop_range_.to_ - 1U)],
-                event_type::kArr),
-        trip_at(rt::frun{tt, rtt, ree_to.r_}[ree_to.stop_range_.from_],
-                event_type::kDep));
     auto penalty_best = std::numeric_limits<double>::max();
     auto min_enter = stop_idx_t{0U};
     for (auto stp_from : fr_from) {
@@ -450,8 +435,7 @@ void optimize_transfers(timetable const& tt,
         continue;
       }
       auto const from_trip = trip_at(stp_from, event_type::kArr);
-      auto next_min_enter = min_enter;
-      for (auto stp_to : fr_to) {
+      for (auto stp_to : it_range{fr_to.rbegin(), fr_to.rend()}) {
         if (!stp_to.in_allowed()) {
           continue;
         }
@@ -472,16 +456,12 @@ void optimize_transfers(timetable const& tt,
         if (arr_fp > dep) {
           continue;
         }
-        if (matches(tt, nullptr, location_match_mode::kEquivalent,
-                    stp_from.get_location_idx(), stp_to.get_location_idx())) {
-          next_min_enter = std::max(next_min_enter, stp_to.stop_idx_);
-          if (stp_from.stop_idx_ < current_exit &&
-              stp_to.stop_idx_ > current_enter) {
-            current_is_double_visit = true;
-          }
-        }
         if (stp_to.stop_idx_ < min_enter) {
           continue;
+        }
+        if (matches(tt, nullptr, location_match_mode::kEquivalent,
+                    stp_from.get_location_idx(), stp_to.get_location_idx())) {
+          min_enter = static_cast<stop_idx_t>(stp_to.stop_idx_ + 1U);
         }
         auto const to_trip = trip_at(stp_to, event_type::kDep);
         auto const penalty =
@@ -506,11 +486,6 @@ void optimize_transfers(timetable const& tt,
           penalty_best = penalty;
         }
       }
-      min_enter = next_min_enter;
-    }
-
-    if (!current_is_double_visit && penalty_current <= penalty_best) {
-      std::tie(leg_from, leg_footpath, leg_to) = current;
     }
   }
 }
