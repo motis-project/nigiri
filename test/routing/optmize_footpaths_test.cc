@@ -376,3 +376,34 @@ TEST(routing, optimize_transfers_keeps_station_bonus_of_same_stop_change) {
   ASSERT_EQ(1U, res.size());
   EXPECT_EQ(loc_idx(tt, "X"), begin(res)->legs_.front().to_);
 }
+
+// T0 and T1 share A, F and station P. Every change takes 2 min with 1 min
+// buffer, and P is the biggest station, but changing there means walking from
+// P1 to P2: stay at A instead.
+TEST(routing, optimize_transfers_prefers_same_stop_over_platform_change) {
+  auto const tt = test::load_feeds_with_walks(
+      {test::feed(
+          {{"R", 50.0, 6.0},
+           {"A", 50.1, 6.0},
+           {"F", 50.2, 6.0},
+           {"P", 50.3, 6.0, "", true},
+           {"P1", 50.3001, 6.0, "P"},
+           {"P2", 50.3002, 6.0, "P"},
+           {"Y", 50.4, 6.0},
+           {"Z", 50.5, 6.0}},
+          {{"T0",
+            "R0",
+            {{"R", "10:00"}, {"A", "10:10"}, {"F", "10:12"}, {"P1", "10:14"}}},
+           {"T1",
+            "R1",
+            {{"A", "10:13"}, {"F", "10:15"}, {"P2", "10:17"}, {"Z", "10:30"}}},
+           {"X0", "RX", {{"P2", "08:00"}, {"Y", "08:30"}}}},
+          "")},
+      {{"P1", "P2", 2}});
+  auto const res = test::search_at(tt, "R", "Z", "10:00");
+  ASSERT_EQ(1U, res.size());
+  auto const& legs = begin(res)->legs_;
+  ASSERT_EQ(3U, legs.size());
+  EXPECT_EQ(loc_idx(tt, "A"), legs[0].to_);
+  EXPECT_EQ(loc_idx(tt, "A"), legs[2].from_);
+}
