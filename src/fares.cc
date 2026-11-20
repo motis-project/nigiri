@@ -1,6 +1,7 @@
 #include "nigiri/fares.h"
 
 #include <cmath>
+#include <cstdint>
 #include <algorithm>
 #include <array>
 #include <iterator>
@@ -706,26 +707,37 @@ bool is_applicable(fares const& f,
   return rider_ok && media_ok;
 }
 
-// Cheapest applicable variant of a fare product, infinity if not applicable.
+// Cost in thousandths of the currency unit: exact for all currencies (ISO 4217
+// minor units <= 3), so equal prices compare equal (float sums do not).
+// Signed: negative amounts represent transfer discounts.
+using cost_t = std::int64_t;
+constexpr auto const kNotApplicable = std::numeric_limits<cost_t>::max();
+
+cost_t add(cost_t const a, cost_t const b) {
+  return a == kNotApplicable || b == kNotApplicable ? kNotApplicable : a + b;
+}
+
+// Cheapest applicable variant of a fare product, kNotApplicable if none.
 // Unset product = free.
-float product_cost(fares const& f,
-                   fare_product_idx_t const p,
-                   profile const& pr) {
+cost_t product_cost(fares const& f,
+                    fare_product_idx_t const p,
+                    profile const& pr) {
   if (p == fare_product_idx_t::invalid()) {
-    return 0.F;
+    return 0;
   }
-  auto min = std::numeric_limits<float>::infinity();
+  auto min = kNotApplicable;
   for (auto const& x : f.fare_products_[p]) {
     if (is_applicable(f, x, pr)) {
-      min = std::min(min, x.amount_);
+      min = std::min(min, static_cast<cost_t>(std::llround(
+                              static_cast<double>(x.amount_) * 1000.0)));
     }
   }
   return min;
 }
 
-float leg_cost(fares const& f, fare_leg const& l, profile const& pr) {
+cost_t leg_cost(fares const& f, fare_leg const& l, profile const& pr) {
   return l.rule_.empty()
-             ? 0.F
+             ? 0
              : std::ranges::min(l.rule_ | std::views::transform([&](auto&& r) {
                                   return product_cost(f, r.fare_product_, pr);
                                 }));
@@ -734,25 +746,25 @@ float leg_cost(fares const& f, fare_leg const& l, profile const& pr) {
 // Cost of a sequence of legs joined by transfer rule r.
 // Assumption for sequences with more than one transfer: the transfer product
 // is paid once for AB (e.g. day pass) and once per transfer otherwise.
-float transfer_cost(fares const& f,
-                    fares::fare_transfer_rule const& r,
-                    std::vector<fare_leg> const& legs,
-                    profile const& pr) {
+cost_t transfer_cost(fares const& f,
+                     fares::fare_transfer_rule const& r,
+                     std::vector<fare_leg> const& legs,
+                     profile const& pr) {
   using fare_transfer_type = fares::fare_transfer_rule::fare_transfer_type;
   auto const ab = product_cost(f, r.fare_product_, pr);
-  auto const n_transfers = static_cast<float>(legs.size() - 1U);
-  auto const sum = [&](auto&& range) {
-    auto x = 0.F;
-    for (auto const& l : range) {
-      x += leg_cost(f, l, pr);
-    }
-    return x;
-  };
+  auto const n_transfers = static_cast<cost_t>(legs.size() - 1U);
+  auto const all_ab = ab == kNotApplicable ? kNotApplicable : n_transfers * ab;
   switch (r.fare_transfer_type_) {
     case fare_transfer_type::kAB: return ab;
     case fare_transfer_type::kAPlusAB:
-      return leg_cost(f, legs.front(), pr) + n_transfers * ab;
-    case fare_transfer_type::kAPlusABPlusB: return sum(legs) + n_transfers * ab;
+      return add(leg_cost(f, legs.front(), pr), all_ab);
+    case fare_transfer_type::kAPlusABPlusB: {
+      auto sum = all_ab;
+      for (auto const& l : legs) {
+        sum = add(sum, leg_cost(f, l, pr));
+      }
+      return sum;
+    }
   }
   std::unreachable();
 }
@@ -859,20 +871,20 @@ std::vector<fare_transfer> join_transfers(
 
         // Cheapest cover of legs [i, n) by standalone legs and transfers.
         struct cover {
-          float cost_;
+          cost_t cost_;
           std::size_t candidate_;
         };
         auto used = std::vector<bool>(candidates.size());
         for (auto const [p, pr] : utl::enumerate(profiles)) {
-          auto best = std::vector<cover>(n + 1U, {0.F, 0U});
+          auto best = std::vector<cover>(n + 1U, {0, 0U});
           for (auto i = n; i-- != 0U;) {
-            best[i] = {
-                leg_cost(f, *std::next(from_it, i), pr) + best[i + 1U].cost_,
-                standalone[i]};
+            best[i] = {add(leg_cost(f, *std::next(from_it, i), pr),
+                           best[i + 1U].cost_),
+                       standalone[i]};
             for (auto const c : chains[i]) {
               auto const& t = candidates[c];
-              auto const cost = transfer_cost(f, *t.rule_, t.legs_, pr) +
-                                best[i + t.legs_.size()].cost_;
+              auto const cost = add(transfer_cost(f, *t.rule_, t.legs_, pr),
+                                    best[i + t.legs_.size()].cost_);
               // on ties: prefer transfers over standalone legs, earlier rules
               // over later rules
               auto const is_better = best[i].candidate_ == standalone[i]
@@ -885,7 +897,7 @@ std::vector<fare_transfer> join_transfers(
           }
 
           auto const is_main = p == 0U;
-          if (!is_main && std::isinf(best[0].cost_)) {
+          if (!is_main && best[0].cost_ == kNotApplicable) {
             continue;  // no cover for this profile
           }
           for (auto i = 0U; i != n;) {
