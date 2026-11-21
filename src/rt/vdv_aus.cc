@@ -1,7 +1,10 @@
 
 #include "nigiri/rt/vdv_aus.h"
 
+#include <cctype>
+#include <algorithm>
 #include <optional>
+#include <ranges>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -11,6 +14,7 @@
 
 #include "utl/enumerate.h"
 #include "utl/erase_duplicates.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/parser/arg_parser.h"
 
 #include "fmt/core.h"
@@ -36,6 +40,7 @@ constexpr auto const kExactMatchScore = 230;
 constexpr auto const kFirstMatchThreshold = 0.5;
 constexpr auto const kFirstMatchThresholdIncomplete = 0.7;
 constexpr auto const kAdditionalMatchThreshold = 0.975;
+constexpr auto const kLineMatchBonus = std::uint32_t{kExactMatchScore};
 constexpr auto const kAllowedTimeDiscrepancy = []() {
   auto error = 0;
   while (kExactMatchScore - error * error > 0) {
@@ -295,6 +300,55 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run,
   return vdv_stops;
 }
 
+auto normalize_line(std::string_view const s) {
+  using namespace std::views;
+  return s | filter([](auto c) { return c != ' ' && c != '-' && c != '_'; })  //
+         | transform([](unsigned char c) { return std::tolower(c); });
+}
+
+bool same_line(std::string_view const a, std::string_view const b) {
+  return std::ranges::equal(normalize_line(a), normalize_line(b));
+}
+
+std::string_view resolve_line(pugi::xml_node const n, bool const is_vdv) {
+  auto const line = std::string_view{
+      n.child_value(is_vdv ? "LinienText" : "PublishedLineName")};
+  return is_vdv && std::ranges::empty(normalize_line(line))
+             ? n.child_value("LinienID")
+             : line;
+}
+
+bool line_matches(timetable const& tt,
+                  std::string_view const line,
+                  run const& r) {
+  if (std::ranges::empty(normalize_line(line))) {
+    return true;
+  }
+  auto const fr = frun{tt, nullptr, r};
+  auto has_name = false;
+  auto is_match = false;
+  fr.for_each_trip([&](trip_idx_t, interval<stop_idx_t> const subrange) {
+    auto const name =
+        fr[static_cast<stop_idx_t>(subrange.from_ - fr.stop_range_.from_)]
+            .route_short_name(event_type::kDep, std::nullopt);
+    if (name.empty() || name == "?") {
+      return;
+    }
+    has_name = true;
+    is_match = is_match || same_line(name, line);
+    for (auto rest = name; !rest.empty() && !is_match;) {
+      auto const slash = rest.find('/');
+      auto const dash = rest.find(" - ");
+      auto const end = std::min(slash, dash);
+      is_match = same_line(rest.substr(0U, end), line);
+      rest = end == std::string_view::npos
+                 ? std::string_view{}
+                 : rest.substr(end + (end == dash ? 3U : 1U));
+    }
+  });
+  return !has_name || is_match;
+}
+
 struct candidate {
   explicit candidate(run const& r, std::uint32_t const total_length)
       : r_{r}, total_length_{total_length} {}
@@ -304,9 +358,13 @@ struct candidate {
     local_best_ = 0U;
   }
 
+  std::uint32_t total() const {
+    return score_ + (line_match_ ? kLineMatchBonus : 0U);
+  }
+
   friend bool operator<(candidate const& a, candidate const& b) {
-    return a.score_ > b.score_ ||
-           (a.score_ == b.score_ && a.total_length_ < b.total_length_);
+    return a.total() > b.total() ||
+           (a.total() == b.total() && a.total_length_ < b.total_length_);
   }
 
   friend bool operator==(candidate const& a, candidate const& b) {
@@ -317,6 +375,7 @@ struct candidate {
   std::uint32_t score_{0U};
   std::uint32_t local_best_{0U};
   std::uint32_t total_length_;
+  bool line_match_{true};
 };
 
 void updater::match_run(run_id const& vdv_id,
@@ -349,8 +408,10 @@ void updater::match_run(run_id const& vdv_id,
     if (vdv_stop.l_ == location_idx_t::invalid()) {
       continue;
     }
+    auto const vdv_root = tt_.locations_.get_root_idx(vdv_stop.l_);
     auto no_transport_found_at_stop = true;
     for (auto const l : tt_.locations_.equivalences_[vdv_stop.l_]) {
+      auto const is_nearby = tt_.locations_.get_root_idx(l) != vdv_root;
       auto routes = std::vector<route_idx_t>{};
       for_each_route_at_stop(tt_, l, [&](location_idx_t, route_idx_t const r) {
         routes.push_back(r);
@@ -358,6 +419,14 @@ void updater::match_run(run_id const& vdv_id,
       utl::erase_duplicates(routes);
       for (auto const r : routes) {
         auto const location_seq = tt_.route_location_seq_[r];
+
+        if (is_nearby && utl::any_of(location_seq, [&](auto const s) {
+              return tt_.locations_.get_root_idx(stop{s}.location_idx()) ==
+                     vdv_root;
+            })) {
+          continue;
+        }
+
         for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
           if (tt_.base(stop{s}.location_idx()) != l) {
             continue;
@@ -430,17 +499,24 @@ void updater::match_run(run_id const& vdv_id,
     }
   }
 
+  for (auto& c : candidates) {
+    c.line_match_ = line_matches(tt_, vdv_id.line_, c.r_);
+  }
+
   utl::sort(candidates);
 
   auto const is_match = [&](auto const& c) {
-    return c.score_ > candidates.front().score_ * kAdditionalMatchThreshold;
+    auto const& best = candidates.front();
+    return c.line_match_ == best.line_match_ &&
+           c.score_ > best.score_ * kAdditionalMatchThreshold;
   };
 
   auto const match_threshold =
       is_complete_run ? kFirstMatchThreshold : kFirstMatchThresholdIncomplete;
   if (!candidates.empty() &&
-      (candidates.front().score_ >
-       vdv_stops.size() * kExactMatchScore * match_threshold)) {
+      (candidates.front().total() >
+       vdv_stops.size() * kExactMatchScore * match_threshold +
+           kLineMatchBonus)) {
     for (auto const& c : candidates) {
       if (is_match(c)) {
         vdv_trace("match_run(vdv_run_id={})\n", vdv_run_id);
@@ -596,6 +672,20 @@ void updater::update_run(rt_timetable& rtt,
     }
   };
 
+  auto const is_match = [&](stop_idx_t const i, location_idx_t const vdv_l) {
+    if (!matches(tt_, nullptr, routing::location_match_mode::kEquivalent,
+                 fr[i].get_location_idx(), vdv_l)) {
+      return false;
+    }
+    auto const rest =
+        interval{i, static_cast<stop_idx_t>(fr.stop_range_.size())};
+    auto const succ_root_match_it = utl::find_if(
+        rest, [&, root = tt_.locations_.get_root_idx(vdv_l)](stop_idx_t j) {
+          return tt_.locations_.get_root_idx(fr[j].get_location_idx()) == root;
+        });
+    return succ_root_match_it == end(rest) || *succ_root_match_it == i;
+  };
+
   vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name({}),
             fr.stop_range_.from_, fr.stop_range_.to_);
   for (auto i = stop_idx_t{0U}; i != fr.stop_range_.size(); ++i) {
@@ -605,8 +695,7 @@ void updater::update_run(rt_timetable& rtt,
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (vdv_stop->l_ != location_idx_t::invalid() &&
-          matches(tt_, nullptr, routing::location_match_mode::kEquivalent,
-                  rs.get_location_idx(), vdv_stop->l_)) {
+          is_match(i, vdv_stop->l_)) {
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
             (static_cast<std::uint32_t>(std::abs(
                  (vdv_stop->arr_.value() - rs.scheduled_time(event_type::kArr))
@@ -776,6 +865,7 @@ void updater::process_vdv_run(rt_timetable& rtt,
     vdv_trace("vdv run without id: {}\n", vdv_run.value());
     return;
   }
+  id->line_ = resolve_line(vdv_run, is_vdv(format_));
 
   auto const& vdv_run_id = id->full_;
 

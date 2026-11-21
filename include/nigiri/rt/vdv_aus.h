@@ -94,6 +94,7 @@ private:
     std::string full_;
     std::string_view run_;
     std::optional<std::string_view> date_{};
+    std::string_view line_{};
   };
 
   std::optional<run_id> resolve_run_id(pugi::xml_node vdv_run);

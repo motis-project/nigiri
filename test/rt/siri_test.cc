@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "fmt/format.h"
+
 #include "pugixml.hpp"
 
 #include "nigiri/loader/dir.h"
@@ -1112,6 +1114,19 @@ TEST(siri_update, matching) {
   };
   EXPECT_TRUE(is_rt("2867631759"));
   EXPECT_FALSE(is_rt("2867631759_twin"));
+
+  auto msg_s3 = std::string{kMsg};
+  msg_s3.replace(msg_s3.find("<PublishedLineName>S2"), 21U,
+                 "<PublishedLineName>S3");
+  auto rtt_s3 = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 3});
+  auto u_s3 = rt::vdv_aus::updater{tt, src_idx,
+                                   rt::vdv_aus::updater::xml_format::kSiri};
+  auto doc_s3 = pugi::xml_document{};
+  doc_s3.load_string(msg_s3.c_str());
+  u_s3.update(rtt_s3, doc_s3);
+  EXPECT_TRUE(
+      gtfsrt_resolve_run(date::sys_days{2025_y / July / 3}, tt, &rtt_s3, {}, td)
+          .first.is_rt());
 }
 
 TEST(siri_update, observed_arrival_only) {
@@ -1250,4 +1265,192 @@ TEST(siri_update, matching_multiple) {
     auto const fr = rt::frun{tt, &rtt, r};
     EXPECT_EQ(1, fr[0].delay(nigiri::event_type::kDep).count());
   }
+}
+
+mem_dir nearby_stops_files() {
+  return mem_dir::read(R"__(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+RPM,regiobus Potsdam Mittelmark,https://example.org,Europe/Berlin
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DAILY,1,1,1,1,1,1,1,20250701,20250731
+FRI,0,0,0,0,1,0,0,20250701,20250731
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+de:11000:900049251,Machnower Str./Berlepschstr.,52.429424,13.256863,1,
+de:11000:900049251::4,Machnower Str./Berlepschstr.,52.429424,13.256863,0,de:11000:900049251
+de:11000:900049251::1,Machnower Str./Berlepschstr.,52.429500,13.256700,0,de:11000:900049251
+de:11000:900049201,S Zehlendorf,52.431210,13.259227,1,
+de:11000:900049201::1,S Zehlendorf,52.431760,13.259046,0,de:11000:900049201
+de:11000:900049201::2,S Zehlendorf,52.432278,13.258904,0,de:11000:900049201
+de:11000:900049271,Zehlendorf Eiche [112 Telt. Damm 5],52.434410,13.260235,1,
+de:11000:900049271::2,Zehlendorf Eiche [112 Telt. Damm 5],52.434410,13.260235,0,de:11000:900049271
+de:11000:900049241,Zehlendorf Eiche,52.435314,13.259691,1,
+de:11000:900049241::3,Zehlendorf Eiche,52.435314,13.259691,0,de:11000:900049241
+rbl:4711,S Zehlendorf (RBL),52.431800,13.259100,0,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+623,RPM,623,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,direction_id
+623,DAILY,fwd,Zehlendorf Eiche,0
+623,FRI,rev,Stahnsdorf Waldschänke,1
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+fwd,20:42:30,20:42:30,de:11000:900049251::4,0
+fwd,20:44:00,20:44:00,de:11000:900049201::1,1
+fwd,20:45:00,20:45:00,de:11000:900049271::2,2
+fwd,20:46:00,20:46:00,de:11000:900049241::3,3
+rev,20:47:00,20:47:00,de:11000:900049241::3,0
+rev,20:48:00,20:48:00,de:11000:900049201::2,1
+rev,20:50:00,20:50:00,de:11000:900049251::1,2
+)__");
+}
+
+std::string siri_journey(std::string_view date,
+                         std::string_view line,
+                         std::string_view ref,
+                         std::string_view calls) {
+  auto msg = fmt::format(R"(<?xml version="1.0" encoding="UTF-8"?>
+<Siri xmlns="http://www.siri.org.uk/siri" version="2.0">
+  <ServiceDelivery>
+    <ResponseTimestamp>{0}T20:40:00+02:00</ResponseTimestamp>
+    <EstimatedTimetableDelivery version="2.0">
+      <EstimatedJourneyVersionFrame>
+        <EstimatedVehicleJourney>
+          <FramedVehicleJourneyRef>
+            <DataFrameRef>{0}</DataFrameRef>
+            <DatedVehicleJourneyRef>{1}</DatedVehicleJourneyRef>
+          </FramedVehicleJourneyRef>
+          {3}
+          <Monitored>true</Monitored>
+          <EstimatedCalls>{2}</EstimatedCalls>
+          <IsCompleteStopSequence>false</IsCompleteStopSequence>
+        </EstimatedVehicleJourney>
+      </EstimatedJourneyVersionFrame>
+    </EstimatedTimetableDelivery>
+  </ServiceDelivery>
+</Siri>)",
+                         date, ref, calls,
+                         line.empty() ? std::string{}
+                                      : fmt::format("<PublishedLineName>{}"
+                                                    "</PublishedLineName>",
+                                                    line));
+  for (auto pos = msg.find("DATE"); pos != std::string::npos;
+       pos = msg.find("DATE", pos)) {
+    msg.replace(pos, 4U, date);
+  }
+  return msg;
+}
+
+constexpr auto const kReverseCalls = R"(
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049241</StopPointRef>
+              <AimedDepartureTime>DATET20:47:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET20:47:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049201</StopPointRef>
+              <AimedArrivalTime>DATET20:48:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET20:48:00+02:00</ExpectedArrivalTime>
+              <AimedDepartureTime>DATET20:48:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET20:48:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>)";
+
+constexpr auto const kForwardRblCalls = R"(
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049251</StopPointRef>
+              <AimedDepartureTime>DATET20:42:30+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET20:43:30+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>rbl:4711</StopPointRef>
+              <AimedArrivalTime>DATET20:44:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET20:45:00+02:00</ExpectedArrivalTime>
+              <AimedDepartureTime>DATET20:44:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET20:45:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049241</StopPointRef>
+              <AimedArrivalTime>DATET20:46:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET20:47:00+02:00</ExpectedArrivalTime>
+            </EstimatedCall>)";
+
+struct siri_fixture {
+  explicit siri_fixture(mem_dir files)
+      : files_{std::move(files)},
+        tt_{loader::load(
+            std::vector<loader::dir_source>{
+                {.dir_ = files_,
+                 .loader_config_ = {.link_stop_distance_ = 500U}}},
+            {2025_y / July / 1, 2025_y / July / 31})} {}
+
+  rt_timetable update(date::sys_days const day,
+                      std::string_view line,
+                      std::string_view ref,
+                      std::string_view calls) const {
+    auto rtt = rt::create_rt_timetable(tt_, day);
+    auto u = rt::vdv_aus::updater{tt_, source_idx_t{0},
+                                  rt::vdv_aus::updater::xml_format::kSiri};
+    auto const msg = siri_journey(date::format("%F", day), line, ref, calls);
+    auto doc = pugi::xml_document{};
+    doc.load_string(msg.c_str());
+    u.update(rtt, doc);
+    return rtt;
+  }
+
+  run resolve(rt_timetable const& rtt,
+              date::sys_days const day,
+              char const* trip_id,
+              char const* start_time) const {
+    auto td = transit_realtime::TripDescriptor{};
+    td.set_trip_id(trip_id);
+    td.set_start_date(date::format("%Y%m%d", day));
+    td.set_start_time(start_time);
+    return gtfsrt_resolve_run(day, tt_, &rtt, {}, td).first;
+  }
+
+  mem_dir files_;
+  timetable tt_;
+};
+
+TEST(siri_update, nearby_stops_no_opposite_direction_match) {
+  auto const t = siri_fixture{nearby_stops_files()};
+
+  auto const thu = date::sys_days{2025_y / July / 3};
+  auto const rtt_thu =
+      t.update(thu, "623", "10120_623_2_1_4#BVG#", kReverseCalls);
+  auto const fwd_thu = t.resolve(rtt_thu, thu, "fwd", "20:42:30");
+  ASSERT_TRUE(fwd_thu.valid());
+  EXPECT_FALSE(fwd_thu.is_rt());
+
+  auto const fri = date::sys_days{2025_y / July / 4};
+  auto const rtt_fri =
+      t.update(fri, "623", "10120_623_2_1_4#BVG#", kReverseCalls);
+  auto const rev_fri = t.resolve(rtt_fri, fri, "rev", "20:47:00");
+  ASSERT_TRUE(rev_fri.valid());
+  EXPECT_TRUE(rev_fri.is_rt());
+  EXPECT_FALSE(t.resolve(rtt_fri, fri, "fwd", "20:42:30").is_rt());
+}
+
+TEST(siri_update, nearby_stops_unknown_stop_id_match) {
+  auto const t = siri_fixture{nearby_stops_files()};
+
+  auto const thu = date::sys_days{2025_y / July / 3};
+  auto const rtt = t.update(thu, "623", "623-22190#RPM#", kForwardRblCalls);
+  auto const r = t.resolve(rtt, thu, "fwd", "20:42:30");
+  ASSERT_TRUE(r.valid());
+  ASSERT_TRUE(r.is_rt());
+  auto const fr = rt::frun{t.tt_, &rtt, r};
+  EXPECT_EQ(1, fr[1].delay(event_type::kArr).count());
+  EXPECT_EQ(1, fr[3].delay(event_type::kArr).count());
+
+  auto const rtt_m32 = t.update(thu, "M32", "623-22190#RPM#", kForwardRblCalls);
+  EXPECT_FALSE(t.resolve(rtt_m32, thu, "fwd", "20:42:30").is_rt());
 }
