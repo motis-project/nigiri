@@ -222,6 +222,18 @@ TEST(loader, enrich_from_metadata_feed) {
   auto const s2 = tt.find({"S2", src});
   ASSERT_TRUE(s2.has_value());
   EXPECT_FALSE(tt.locations_.wikidata_[*s2].valid());
+
+  auto const is_meta = [&](location_idx_t const l) {
+    return tt.locations_.src_[l] == source_idx_t{1U};
+  };
+  auto n_real_fps = 0U;
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][l]) {
+      EXPECT_FALSE(is_meta(l) || is_meta(fp.target()));
+      n_real_fps += l != fp.target() ? 1U : 0U;
+    }
+  }
+  EXPECT_NE(0U, n_real_fps);
 }
 
 TEST(loader, metadata_feed_requires_line_name_match) {

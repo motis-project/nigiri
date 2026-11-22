@@ -292,7 +292,7 @@ void apply_transfer_rules(
     }
     write_rule_locations(tt);
   }
-  write_profiles(tt, walks, qualified_rule_fps);
+  write_profiles(tt, walks, qualified_rule_fps, ctx.metadata_only_sources_);
 }
 
 }  // namespace nigiri::loader
