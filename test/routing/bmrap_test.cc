@@ -1090,14 +1090,72 @@ TEST(bmrap, realization_takes_earliest_connections) {
   }
 }
 
-// An anchor is realized like any other result: the mc pong's legs are the
-// latest connections (its breadcrumbs pin the labels), the realization's the
-// earliest. PONG rebuilds its legs from the round times and gets the earliest
-// as well, so for the 2-criteria journey O 10:00 -> D 11:30 (the only one,
-// an anchor) BMRAPP returns PONG's legs.
-TEST(bmrap, anchors_are_realized_as_pong_reports_them) {
+// The 2-criteria journey O 10:00 -> D 11:30 (the only one, an anchor) has
+// three transfers, the middle two at B (R2a, R3a: at E 10:40) or at C (R2b,
+// R3b: at E 10:55), both for R4. PONG keeps its backward pong's latest
+// departure from M (via C): its reconstruction only moves a ride to an earlier
+// trip of the same leg. BMRAPP realizes the anchor like any other result: the
+// forward run reaches E earliest via B. The mc pong's legs, the latest
+// connections, never reach the result.
+namespace {
+
+constexpr auto const kTransferGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+O,O,0.0,1.0,,
+M,M,1.0,1.0,,
+B,B,2.0,1.0,,
+C,C,2.0,2.0,,
+E,E,3.0,1.0,,
+D,D,4.0,1.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,R1,,,3
+R2a,DB,R2a,,,3
+R3a,DB,R3a,,,3
+R2b,DB,R2b,,,3
+R3b,DB,R3b,,,3
+R4,DB,R4,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1,,
+R2a,S,T2a,,
+R3a,S,T3a,,
+R2b,S,T2b,,
+R3b,S,T3b,,
+R4,S,T4,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,10:00:00,10:00:00,O,0,0,0
+T1,10:20:00,10:20:00,M,1,0,0
+T2a,10:22:00,10:22:00,M,0,0,0
+T2a,10:30:00,10:30:00,B,1,0,0
+T3a,10:32:00,10:32:00,B,0,0,0
+T3a,10:40:00,10:40:00,E,1,0,0
+T2b,10:30:00,10:30:00,M,0,0,0
+T2b,10:40:00,10:40:00,C,1,0,0
+T3b,10:45:00,10:45:00,C,0,0,0
+T3b,10:55:00,10:55:00,E,1,0,0
+T4,11:00:00,11:00:00,E,0,0,0
+T4,11:30:00,11:30:00,D,1,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240619,1
+)"sv;
+
+}  // namespace
+
+TEST(bmrap, anchors_are_realized_unlike_pong) {
   auto const tt = loader::load(
-      mem_dir::read(std::string{kRealizeGTFS}),
+      mem_dir::read(std::string{kTransferGTFS}),
       {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}});
   auto const loc = [&](char const* id) {
     return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
@@ -1110,30 +1168,43 @@ TEST(bmrap, anchors_are_realized_as_pong_reports_them) {
   q.min_connection_count_ = 1U;
   q.extend_interval_later_ = true;
 
-  auto const find = [&](pareto_set<routing::journey> const& js) {
+  // where the journey O 10:00 -> D 11:30 transfers after its second ride,
+  // and when its third reaches E
+  auto const transfer = [&](pareto_set<routing::journey> const& js) {
     auto const j = utl::find_if(js, [&](routing::journey const& x) {
       return x.departure_time() == day + 8h &&
              x.arrival_time() == day + 9h + 30min;
     });
     EXPECT_NE(j, end(js)) << "O 10:00 -> D 11:30 not found";
-    return j == end(js) ? nullptr : &*j;
+    auto rides = std::vector<routing::journey::leg>{};
+    if (j != end(js)) {
+      for (auto const& l : j->legs_) {
+        if (std::holds_alternative<routing::journey::run_enter_exit>(l.uses_)) {
+          rides.push_back(l);
+        }
+      }
+    }
+    EXPECT_EQ(4U, rides.size());
+    return rides.size() == 4U
+               ? std::pair{rides[1].to_, rides[2].arr_time_}
+               : std::pair{location_idx_t::invalid(), unixtime_t{}};
   };
 
   auto pong_ss = routing::search_state{};
   auto pong_as = routing::raptor_state{};
   auto const pong = routing::pong_search(tt, nullptr, pong_ss, pong_as, q,
                                          direction::kForward);
+  EXPECT_EQ(std::pair(loc("C"), day + 8h + 55min), transfer(*pong.journeys_))
+      << "PONG: the latest departure from M, via C";
+
   auto ss = routing::search_state{};
   auto as = routing::raptor_state{};
   auto ms = routing::basic_mcraptor_state<routing::arr_non_transit_criteria>{};
   auto const r =
       routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
           tt, nullptr, ss, as, ms, q, direction::kForward);
-
-  auto const* const p = find(*pong.journeys_);
-  auto const* const b = find(*r.journeys_);
-  ASSERT_TRUE(p != nullptr && b != nullptr);
-  EXPECT_EQ(p->legs_, b->legs_);
+  EXPECT_EQ(std::pair(loc("B"), day + 8h + 40min), transfer(*r.journeys_))
+      << "BMRAPP: the earliest arrival at E, via B";
   EXPECT_EQ(r.journeys_->size(), r.algo_stats_.at("bmrapp_realized"));
   EXPECT_EQ(0U, r.algo_stats_.at("bmrapp_unrealized"));
 }
