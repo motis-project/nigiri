@@ -125,10 +125,10 @@ routing_result bmrap_profile(
   auto lb_time = clk::duration{};
   auto sw = stopwatch{};
   if constexpr (ping_t::kUseLowerBounds || bounded_needs_lb<mc_ping_t>()) {
-    dijkstra(tt, nullptr, q, SearchDir, fwd_lb);
+    dijkstra(tt, rtt, q, SearchDir, fwd_lb);
   }
   if constexpr (bounded_needs_lb<pong_t>() || bounded_needs_lb<mc_pong_t>()) {
-    dijkstra(tt, nullptr, qf, flip(SearchDir), bwd_lb);
+    dijkstra(tt, rtt, qf, flip(SearchDir), bwd_lb);
   }
   sw.lap(lb_time);
   auto ms_setup = clk::duration{};
