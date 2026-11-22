@@ -1423,34 +1423,36 @@ struct siri_fixture {
 TEST(siri_update, nearby_stops_no_opposite_direction_match) {
   auto const t = siri_fixture{nearby_stops_files()};
 
-  auto const thu = date::sys_days{2025_y / July / 3};
+  auto const thursday = date::sys_days{2025_y / July / 3};
   auto const rtt_thu =
-      t.update(thu, "623", "10120_623_2_1_4#BVG#", kReverseCalls);
-  auto const fwd_thu = t.resolve(rtt_thu, thu, "fwd", "20:42:30");
+      t.update(thursday, "623", "10120_623_2_1_4#BVG#", kReverseCalls);
+  auto const fwd_thu = t.resolve(rtt_thu, thursday, "fwd", "20:42:30");
   ASSERT_TRUE(fwd_thu.valid());
   EXPECT_FALSE(fwd_thu.is_rt());
 
-  auto const fri = date::sys_days{2025_y / July / 4};
+  auto const friday = date::sys_days{2025_y / July / 4};
   auto const rtt_fri =
-      t.update(fri, "623", "10120_623_2_1_4#BVG#", kReverseCalls);
-  auto const rev_fri = t.resolve(rtt_fri, fri, "rev", "20:47:00");
+      t.update(friday, "623", "10120_623_2_1_4#BVG#", kReverseCalls);
+  auto const rev_fri = t.resolve(rtt_fri, friday, "rev", "20:47:00");
   ASSERT_TRUE(rev_fri.valid());
   EXPECT_TRUE(rev_fri.is_rt());
-  EXPECT_FALSE(t.resolve(rtt_fri, fri, "fwd", "20:42:30").is_rt());
+  EXPECT_FALSE(t.resolve(rtt_fri, friday, "fwd", "20:42:30").is_rt());
 }
 
 TEST(siri_update, nearby_stops_unknown_stop_id_match) {
   auto const t = siri_fixture{nearby_stops_files()};
 
-  auto const thu = date::sys_days{2025_y / July / 3};
-  auto const rtt = t.update(thu, "623", "623-22190#RPM#", kForwardRblCalls);
-  auto const r = t.resolve(rtt, thu, "fwd", "20:42:30");
+  auto const thursday = date::sys_days{2025_y / July / 3};
+  auto const rtt =
+      t.update(thursday, "623", "623-22190#RPM#", kForwardRblCalls);
+  auto const r = t.resolve(rtt, thursday, "fwd", "20:42:30");
   ASSERT_TRUE(r.valid());
   ASSERT_TRUE(r.is_rt());
   auto const fr = rt::frun{t.tt_, &rtt, r};
   EXPECT_EQ(1, fr[1].delay(event_type::kArr).count());
   EXPECT_EQ(1, fr[3].delay(event_type::kArr).count());
 
-  auto const rtt_m32 = t.update(thu, "M32", "623-22190#RPM#", kForwardRblCalls);
-  EXPECT_FALSE(t.resolve(rtt_m32, thu, "fwd", "20:42:30").is_rt());
+  auto const rtt_m32 =
+      t.update(thursday, "M32", "623-22190#RPM#", kForwardRblCalls);
+  EXPECT_FALSE(t.resolve(rtt_m32, thursday, "fwd", "20:42:30").is_rt());
 }
