@@ -562,13 +562,13 @@ void updater::match_run(run_id const& vdv_id,
       is_complete_run ? kFirstMatchThreshold : kFirstMatchThresholdIncomplete;
   auto const n_counted =
       !candidates.empty() && candidates.front().line_match_
-          ? std::max(static_cast<std::size_t>(utl::count_if(
+          ? std::max(static_cast<std::uint32_t>(utl::count_if(
                          vdv_stops,
                          [](auto const& s) {
                            return s.l_ != location_idx_t::invalid();
                          })),
-                     std::min(std::size_t{2U}, std::size_t{vdv_stops.size()}))
-          : std::size_t{vdv_stops.size()};
+                     std::min(std::uint32_t{2U}, vdv_stops.size()))
+          : vdv_stops.size();
   if (!candidates.empty() &&
       (candidates.front().total() >
        n_counted * kExactMatchScore * match_threshold + kLineMatchBonus)) {
