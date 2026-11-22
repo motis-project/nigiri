@@ -1291,15 +1291,32 @@ de:11000:900049271::2,Zehlendorf Eiche [112 Telt. Damm 5],52.434410,13.260235,0,
 de:11000:900049241,Zehlendorf Eiche,52.435314,13.259691,1,
 de:11000:900049241::3,Zehlendorf Eiche,52.435314,13.259691,0,de:11000:900049241
 rbl:4711,S Zehlendorf (RBL),52.431800,13.259100,0,
+b,B,52.500000,13.400000,1,
+b::1,B,52.500000,13.400100,0,b
+b::2,B,52.500050,13.400100,0,b
+d,D,52.502000,13.400000,0,
+f,F,52.501000,13.400000,0,
+p,P,52.600000,13.400000,0,
+p2,P2,52.600900,13.400000,0,
+q,Q,52.610000,13.400000,0,
+x1,X1,52.620000,13.400000,0,
+x2,X2,52.630000,13.400000,0,
+x3,X3,52.640000,13.400000,0,
+r,R,52.590000,13.400000,0,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_type
 623,RPM,623,,3
+X,RPM,X,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,direction_id
 623,DAILY,fwd,Zehlendorf Eiche,0
 623,FRI,rev,Stahnsdorf Waldschänke,1
+623,DAILY,loop,S Zehlendorf,0
+X,DAILY,fwd2,F,0
+X,FRI,rev2,B,1
+X,DAILY,dp,R,0
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -1310,6 +1327,23 @@ fwd,20:46:00,20:46:00,de:11000:900049241::3,3
 rev,20:47:00,20:47:00,de:11000:900049241::3,0
 rev,20:48:00,20:48:00,de:11000:900049201::2,1
 rev,20:50:00,20:50:00,de:11000:900049251::1,2
+loop,21:30:00,21:30:00,de:11000:900049251::4,0
+loop,21:33:00,21:33:00,de:11000:900049271::2,1
+loop,21:34:00,21:34:00,de:11000:900049241::3,2
+loop,21:50:00,21:50:00,de:11000:900049251::1,3
+loop,22:00:00,22:00:00,de:11000:900049201::2,4
+fwd2,10:00:00,10:00:00,b::1,0
+fwd2,10:02:00,10:02:00,d,1
+fwd2,10:04:00,10:04:00,f,2
+rev2,10:03:00,10:03:00,d,0
+rev2,10:05:00,10:05:00,b::2,1
+dp,12:00:00,12:00:00,p,0
+dp,12:04:00,12:04:00,q,1
+dp,12:05:00,12:05:00,x1,2
+dp,12:05:00,12:05:00,x2,3
+dp,12:06:00,12:06:00,x3,4
+dp,12:06:00,12:06:00,p2,5
+dp,12:08:00,12:08:00,r,6
 )__");
 }
 
@@ -1382,6 +1416,80 @@ constexpr auto const kForwardRblCalls = R"(
               <ExpectedArrivalTime>DATET20:47:00+02:00</ExpectedArrivalTime>
             </EstimatedCall>)";
 
+constexpr auto const kForwardExtraStopCalls = R"(
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049251</StopPointRef>
+              <AimedDepartureTime>DATET20:42:30+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET20:43:30+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>rbl:4711</StopPointRef>
+              <AimedArrivalTime>DATET20:43:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET20:44:00+02:00</ExpectedArrivalTime>
+              <AimedDepartureTime>DATET20:43:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET20:44:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049201</StopPointRef>
+              <AimedArrivalTime>DATET20:44:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET20:47:00+02:00</ExpectedArrivalTime>
+              <AimedDepartureTime>DATET20:44:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET20:47:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049241</StopPointRef>
+              <AimedArrivalTime>DATET20:46:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET20:49:00+02:00</ExpectedArrivalTime>
+            </EstimatedCall>)";
+
+constexpr auto const kReverseOwnStopBeforeCalls = R"(
+            <EstimatedCall>
+              <StopPointRef>d</StopPointRef>
+              <AimedDepartureTime>DATET10:03:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET10:03:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>b::2</StopPointRef>
+              <AimedArrivalTime>DATET10:05:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET10:05:00+02:00</ExpectedArrivalTime>
+            </EstimatedCall>)";
+
+constexpr auto const kAlignmentCalls = R"(
+            <EstimatedCall>
+              <StopPointRef>p</StopPointRef>
+              <AimedDepartureTime>DATET12:04:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET12:04:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>q</StopPointRef>
+              <AimedArrivalTime>DATET12:05:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET12:07:00+02:00</ExpectedArrivalTime>
+              <AimedDepartureTime>DATET12:05:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET12:07:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>r</StopPointRef>
+              <AimedArrivalTime>DATET12:08:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET12:10:00+02:00</ExpectedArrivalTime>
+            </EstimatedCall>)";
+
+constexpr auto const kLoopCalls = R"(
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049201</StopPointRef>
+              <AimedDepartureTime>DATET21:30:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET21:32:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049271</StopPointRef>
+              <AimedDepartureTime>DATET21:33:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET21:35:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>de:11000:900049241</StopPointRef>
+              <AimedDepartureTime>DATET21:34:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET21:36:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>)";
+
 struct siri_fixture {
   explicit siri_fixture(mem_dir files)
       : files_{std::move(files)},
@@ -1437,6 +1545,15 @@ TEST(siri_update, nearby_stops_no_opposite_direction_match) {
   ASSERT_TRUE(rev_fri.valid());
   EXPECT_TRUE(rev_fri.is_rt());
   EXPECT_FALSE(t.resolve(rtt_fri, friday, "fwd", "20:42:30").is_rt());
+
+  auto const rtt2_thu =
+      t.update(thursday, "X", "rev2#RPM#", kReverseOwnStopBeforeCalls);
+  EXPECT_FALSE(t.resolve(rtt2_thu, thursday, "fwd2", "10:00:00").is_rt());
+
+  auto const rtt2_fri =
+      t.update(friday, "X", "rev2#RPM#", kReverseOwnStopBeforeCalls);
+  EXPECT_TRUE(t.resolve(rtt2_fri, friday, "rev2", "10:03:00").is_rt());
+  EXPECT_FALSE(t.resolve(rtt2_fri, friday, "fwd2", "10:00:00").is_rt());
 }
 
 TEST(siri_update, nearby_stops_unknown_stop_id_match) {
@@ -1452,7 +1569,40 @@ TEST(siri_update, nearby_stops_unknown_stop_id_match) {
   EXPECT_EQ(1, fr[1].delay(event_type::kArr).count());
   EXPECT_EQ(1, fr[3].delay(event_type::kArr).count());
 
+  auto const rtt_extra =
+      t.update(thursday, "623", "623-22191#RPM#", kForwardExtraStopCalls);
+  auto const r_extra = t.resolve(rtt_extra, thursday, "fwd", "20:42:30");
+  ASSERT_TRUE(r_extra.is_rt());
+  auto const fr_extra = rt::frun{t.tt_, &rtt_extra, r_extra};
+  EXPECT_EQ(3, fr_extra[1].delay(event_type::kArr).count());
+  EXPECT_EQ(3, fr_extra[1].delay(event_type::kDep).count());
+
   auto const rtt_m32 =
       t.update(thursday, "M32", "623-22190#RPM#", kForwardRblCalls);
   EXPECT_FALSE(t.resolve(rtt_m32, thursday, "fwd", "20:42:30").is_rt());
+}
+
+TEST(siri_update, nearby_stops_in_order_alignment) {
+  auto const t = siri_fixture{nearby_stops_files()};
+
+  auto const thursday = date::sys_days{2025_y / July / 3};
+  auto const rtt = t.update(thursday, "X", "dp#RPM#", kAlignmentCalls);
+  auto const r = t.resolve(rtt, thursday, "dp", "12:00:00");
+  ASSERT_TRUE(r.valid());
+  ASSERT_TRUE(r.is_rt());
+  auto const fr = rt::frun{t.tt_, &rtt, r};
+  EXPECT_EQ(3, fr[1].delay(event_type::kArr).count());
+}
+
+TEST(siri_update, nearby_stops_own_stop_served_later) {
+  auto const t = siri_fixture{nearby_stops_files()};
+
+  auto const thursday = date::sys_days{2025_y / July / 3};
+  auto const rtt = t.update(thursday, "623", "623-155#RPM#", kLoopCalls);
+  auto const r = t.resolve(rtt, thursday, "loop", "21:30:00");
+  ASSERT_TRUE(r.valid());
+  ASSERT_TRUE(r.is_rt());
+  auto const fr = rt::frun{t.tt_, &rtt, r};
+  EXPECT_EQ(2, fr[0].delay(event_type::kDep).count());
+  EXPECT_EQ(2, fr[2].delay(event_type::kDep).count());
 }

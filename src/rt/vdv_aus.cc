@@ -1,10 +1,12 @@
 
 #include "nigiri/rt/vdv_aus.h"
 
+#include <cassert>
 #include <cctype>
 #include <algorithm>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -41,6 +43,7 @@ constexpr auto const kFirstMatchThreshold = 0.5;
 constexpr auto const kFirstMatchThresholdIncomplete = 0.7;
 constexpr auto const kAdditionalMatchThreshold = 0.975;
 constexpr auto const kLineMatchBonus = std::uint32_t{kExactMatchScore};
+constexpr auto const kRootMatchWindow = std::size_t{3U};
 constexpr auto const kAllowedTimeDiscrepancy = []() {
   auto error = 0;
   while (kExactMatchScore - error * error > 0) {
@@ -349,13 +352,61 @@ bool line_matches(timetable const& tt,
   return !has_name || is_match;
 }
 
+using vdv_call_idx_t = cista::strong<std::uint16_t, struct _vdv_call_idx>;
+
 struct candidate {
+  using call_match_idx_t = cista::strong<std::uint32_t, struct _call_match_idx>;
+
+  struct call_match {
+    vdv_call_idx_t vdv_call_;
+    stop_idx_t stop_idx_;
+    std::uint32_t score_;
+  };
+
   explicit candidate(run const& r, std::uint32_t const total_length)
       : r_{r}, total_length_{total_length} {}
 
-  void finish_stop() {
-    score_ += local_best_;
-    local_best_ = 0U;
+  void align() {
+    assert(std::ranges::is_sorted(call_matches_, {}, &call_match::vdv_call_));
+
+    // best_seq_score[i] = best score for the sequence ending at call match i
+    // best_seq_start[i] = best start for the sequence ending at call match i
+    auto best_seq_score =
+        vector_map<call_match_idx_t, std::uint32_t>(call_matches_.size());
+    auto best_seq_start =
+        vector_map<call_match_idx_t, stop_idx_t>(call_matches_.size());
+
+    // Dynamic programming:
+    // invariant = best start+score are available for i < to_idx
+    // => for the next to_idx select the best from_idx
+    //    WHERE from is an earlier VDV call (from_idx < call_start)
+    //      AND from.stop_idx <= to.stop_idx
+    auto call_start = call_match_idx_t{0U};
+    for (auto to_idx = call_match_idx_t{0U}; to_idx != call_matches_.size();
+         ++to_idx) {
+      auto const& to = call_matches_[to_idx];
+      if (to.vdv_call_ != call_matches_[call_start].vdv_call_) {
+        call_start = to_idx;
+      }
+
+      best_seq_score[to_idx] = to.score_;
+      best_seq_start[to_idx] = to.stop_idx_;
+
+      for (auto from_idx = call_match_idx_t{0U}; from_idx != call_start;
+           ++from_idx) {
+        auto const& from = call_matches_[from_idx];
+        if (from.stop_idx_ <= to.stop_idx_ &&  // == OK: >1 VDV stop VS 1 stop
+            best_seq_score[from_idx] + to.score_ > best_seq_score[to_idx]) {
+          best_seq_score[to_idx] = best_seq_score[from_idx] + to.score_;
+          best_seq_start[to_idx] = best_seq_start[from_idx];
+        }
+      }
+
+      if (best_seq_score[to_idx] > score_) {
+        score_ = best_seq_score[to_idx];
+        r_.stop_range_.from_ = best_seq_start[to_idx];
+      }
+    }
   }
 
   std::uint32_t total() const {
@@ -373,9 +424,9 @@ struct candidate {
 
   run r_;
   std::uint32_t score_{0U};
-  std::uint32_t local_best_{0U};
   std::uint32_t total_length_;
   bool line_match_{true};
+  vector_map<call_match_idx_t, call_match> call_matches_;
 };
 
 void updater::match_run(run_id const& vdv_id,
@@ -404,14 +455,16 @@ void updater::match_run(run_id const& vdv_id,
     }
   }
 
-  for (auto const& vdv_stop : vdv_stops) {
+  for (auto const [call, vdv_stop] : utl::enumerate(vdv_stops)) {
     if (vdv_stop.l_ == location_idx_t::invalid()) {
       continue;
     }
-    auto const vdv_root = tt_.locations_.get_root_idx(vdv_stop.l_);
+    auto const has_same_root = [&, root = tt_.locations_.get_root_idx(
+                                       vdv_stop.l_)](location_idx_t const x) {
+      return tt_.locations_.get_root_idx(x) == root;
+    };
     auto no_transport_found_at_stop = true;
     for (auto const l : tt_.locations_.equivalences_[vdv_stop.l_]) {
-      auto const is_nearby = tt_.locations_.get_root_idx(l) != vdv_root;
       auto routes = std::vector<route_idx_t>{};
       for_each_route_at_stop(tt_, l, [&](location_idx_t, route_idx_t const r) {
         routes.push_back(r);
@@ -419,18 +472,19 @@ void updater::match_run(run_id const& vdv_id,
       utl::erase_duplicates(routes);
       for (auto const r : routes) {
         auto const location_seq = tt_.route_location_seq_[r];
-
-        if (is_nearby && utl::any_of(location_seq, [&](auto const s) {
-              return tt_.locations_.get_root_idx(stop{s}.location_idx()) ==
-                     vdv_root;
-            })) {
-          continue;
-        }
-
         for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-          if (tt_.base(stop{s}.location_idx()) != l) {
+          auto const window =
+              interval{stop_idx - std::min(stop_idx, kRootMatchWindow),
+                       std::min(stop_idx + kRootMatchWindow + 1U,
+                                static_cast<std::size_t>(location_seq.size()))};
+          if (tt_.base(stop{s}.location_idx()) != l ||
+              (!has_same_root(l) &&
+               utl::any_of(window, [&](std::size_t const j) {
+                 return has_same_root(stop{location_seq[j]}.location_idx());
+               }))) {
             continue;
           }
+
           auto const vdv_ev = stop_idx == 0
                                   ? vdv_stop.get_event(event_type::kDep)
                               : stop_idx == location_seq.size() - 1
@@ -463,14 +517,8 @@ void updater::match_run(run_id const& vdv_id,
                     day_idx_t{nigiri_ev_time.days() - day_shift.count()}};
 
             if (tt_.is_transport_active(tr.t_idx_, tr.day_)) {
-              auto candidate =
-                  std::find_if(begin(candidates), end(candidates),
-                               [&](auto const& c) { return c.r_.t_ == tr; });
-
-              if (candidate != end(candidates) &&
-                  stop_idx < candidate->r_.stop_range_.from_) {
-                continue;
-              }
+              auto candidate = utl::find_if(
+                  candidates, [&](auto const& c) { return c.r_.t_ == tr; });
 
               if (candidate == end(candidates)) {
                 candidates.emplace_back(
@@ -481,9 +529,10 @@ void updater::match_run(run_id const& vdv_id,
                 candidate = end(candidates) - 1;
               }
 
-              candidate->local_best_ =
-                  std::max(candidate->local_best_,
-                           static_cast<std::uint32_t>(local_score));
+              candidate->call_matches_.push_back(
+                  {.vdv_call_ = vdv_call_idx_t{call},
+                   .stop_idx_ = static_cast<stop_idx_t>(stop_idx),
+                   .score_ = static_cast<std::uint32_t>(local_score)});
 
               no_transport_found_at_stop = false;
             }
@@ -494,12 +543,10 @@ void updater::match_run(run_id const& vdv_id,
     if (no_transport_found_at_stop) {
       ++stats.no_transport_found_at_stop_;
     }
-    for (auto& c : candidates) {
-      c.finish_stop();
-    }
   }
 
   for (auto& c : candidates) {
+    c.align();
     c.line_match_ = line_matches(tt_, vdv_id.line_, c.r_);
   }
 
@@ -513,10 +560,18 @@ void updater::match_run(run_id const& vdv_id,
 
   auto const match_threshold =
       is_complete_run ? kFirstMatchThreshold : kFirstMatchThresholdIncomplete;
+  auto const n_counted =
+      !candidates.empty() && candidates.front().line_match_
+          ? std::max(static_cast<std::size_t>(utl::count_if(
+                         vdv_stops,
+                         [](auto const& s) {
+                           return s.l_ != location_idx_t::invalid();
+                         })),
+                     std::min(std::size_t{2U}, std::size_t{vdv_stops.size()}))
+          : std::size_t{vdv_stops.size()};
   if (!candidates.empty() &&
       (candidates.front().total() >
-       vdv_stops.size() * kExactMatchScore * match_threshold +
-           kLineMatchBonus)) {
+       n_counted * kExactMatchScore * match_threshold + kLineMatchBonus)) {
     for (auto const& c : candidates) {
       if (is_match(c)) {
         vdv_trace("match_run(vdv_run_id={})\n", vdv_run_id);
@@ -672,18 +727,34 @@ void updater::update_run(rt_timetable& rtt,
     }
   };
 
-  auto const is_match = [&](stop_idx_t const i, location_idx_t const vdv_l) {
-    if (!matches(tt_, nullptr, routing::location_match_mode::kEquivalent,
-                 fr[i].get_location_idx(), vdv_l)) {
+  auto const is_match = [&](stop_idx_t const i, auto const call) {
+    auto const l = fr[i].get_location_idx();
+    if (!matches(tt_, nullptr, routing::location_match_mode::kEquivalent, l,
+                 call->l_)) {
       return false;
     }
-    auto const rest =
-        interval{i, static_cast<stop_idx_t>(fr.stop_range_.size())};
-    auto const succ_root_match_it = utl::find_if(
-        rest, [&, root = tt_.locations_.get_root_idx(vdv_l)](stop_idx_t j) {
-          return tt_.locations_.get_root_idx(fr[j].get_location_idx()) == root;
-        });
-    return succ_root_match_it == end(rest) || *succ_root_match_it == i;
+    auto const root = tt_.locations_.get_root_idx(l);
+    auto const call_root = tt_.locations_.get_root_idx(call->l_);
+    if (root == call_root) {
+      return true;
+    }
+    auto const succ_stops =
+        interval{std::size_t{i} + 1U,
+                 std::min(std::size_t{i} + kRootMatchWindow + 1U,
+                          static_cast<std::size_t>(fr.stop_range_.size()))};
+    auto const succ_calls = std::span{call + 1, end(vdv_stops)}.first(
+        std::min(kRootMatchWindow,
+                 static_cast<std::size_t>(end(vdv_stops) - (call + 1))));
+    return utl::none_of(succ_stops,
+                        [&](std::size_t const j) {
+                          return tt_.locations_.get_root_idx(
+                                     fr[static_cast<stop_idx_t>(j)]
+                                         .get_location_idx()) == call_root;
+                        }) &&
+           utl::none_of(succ_calls, [&](auto const& c) {
+             return c.l_ != location_idx_t::invalid() &&
+                    tt_.locations_.get_root_idx(c.l_) == root;
+           });
   };
 
   vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name({}),
@@ -694,8 +765,7 @@ void updater::update_run(rt_timetable& rtt,
     auto matched_dep = false;
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
-      if (vdv_stop->l_ != location_idx_t::invalid() &&
-          is_match(i, vdv_stop->l_)) {
+      if (vdv_stop->l_ != location_idx_t::invalid() && is_match(i, vdv_stop)) {
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
             (static_cast<std::uint32_t>(std::abs(
                  (vdv_stop->arr_.value() - rs.scheduled_time(event_type::kArr))
