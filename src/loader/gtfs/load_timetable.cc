@@ -111,7 +111,7 @@ void load_timetable(loader_config const& config,
       tt.internal_interval_days(), calendar, dates,
       config.extend_calendar_ ? feed_info.feed_end_date_ : std::nullopt);
   auto const shape_states =
-      (shapes_data != nullptr)
+      (shapes_data != nullptr && !metadata_only)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)
           : shape_loader_state{};
   auto metadata_only_service = bitfield{};
@@ -131,8 +131,13 @@ void load_timetable(loader_config const& config,
                              location_groups, stops);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(trip_data, stops, flex_areas, booking_rules, location_groups,
-                  i18n, load(kStopTimesFile).data(), shapes_data != nullptr,
-                  stops_accessible);
+                  i18n, load(kStopTimesFile).data(),
+                  shapes_data != nullptr && !metadata_only, stops_accessible);
+  for (auto& t : trip_data.data_) {
+    if (t.all_pickups_on_request_) {
+      t.flags_[kReservationNotRequired] = false;
+    }
+  }
   load_fares(tt, ctx, d, service, routes, stops);
   load_ticketing(tt, ctx, d, agency_ticketing, stops, routes, trip_data, src);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",

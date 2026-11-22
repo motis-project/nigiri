@@ -11,9 +11,10 @@
 #include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
-#include "utl/to_vec.h"
 
+#include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/merge_duplicates.h"
+#include "nigiri/loader/virt/rewrite_routes.h"
 #include "nigiri/logging.h"
 #include "nigiri/translations_view.h"
 
@@ -22,10 +23,31 @@ namespace nigiri::loader {
 namespace {
 
 constexpr auto const kFlags =
-    std::array{kBikesAllowed, kCarsAllowed, kWheelchairAccessible};
+    std::array{kBikesAllowed, kCarsAllowed, kWheelchairAccessible,
+               kReservationNotRequired};
+
+constexpr auto const kClaszShift = 8U;
+
+// The flag value that carries information (the other one is the default).
+bool informative(route_flag const f) { return f != kReservationNotRequired; }
+
+// Bits per route: flag on all sections, flag on some sections.
+bool is_flag_on_route(timetable const& tt,
+                      route_flag const f,
+                      route_idx_t const r,
+                      bool const value) {
+  return tt.route_flags_[f][to_idx(r) * 2U] == value &&
+         tt.route_flags_[f][to_idx(r) * 2U + 1U] == value;
+}
 
 trip_idx_t first_trip(timetable const& tt, transport_idx_t const t) {
   return tt.merged_trips_[tt.transport_to_trip_section_[t].front()].front();
+}
+
+metadata_enricher::route_id trip_route_id(timetable const& tt,
+                                          transport_idx_t const t) {
+  auto const trip = first_trip(tt, t);
+  return {tt.trip_id_src_[trip], tt.trip_route_id_[trip]};
 }
 
 bool is_active(timetable const& tt, transport_idx_t const t) {
@@ -125,12 +147,8 @@ std::string_view short_name(timetable const& tt, trip_idx_t const t) {
 
 void metadata_enricher::add_transport(transport_idx_t const target,
                                       transport_idx_t const source) {
-  auto const trip_route_id = [&](transport_idx_t const t) {
-    auto const trip = first_trip(tt_, t);
-    return route_id{tt_.trip_id_src_[trip], tt_.trip_route_id_[trip]};
-  };
-  auto const route_t = trip_route_id(target);
-  auto const route_s = trip_route_id(source);
+  auto const route_t = trip_route_id(tt_, target);
+  auto const route_s = trip_route_id(tt_, source);
   if (route_t != route_s && route_t.second != route_id_idx_t::invalid() &&
       route_s.second != route_id_idx_t::invalid()) {
     ++route_ids_[{route_t, route_s}];
@@ -143,9 +161,14 @@ void metadata_enricher::add_transport(transport_idx_t const target,
     ++providers_[{provider_t, provider_s}];
   }
 
+  // Reservation defaults depend on the clasz: only compare equal ones.
+  auto const r_t = tt_.transport_route_[target];
+  auto const r_s = tt_.transport_route_[source];
   auto mask = std::uint8_t{0U};
   for (auto const f : kFlags) {
-    if (tt_.is_flag_set(f, tt_.transport_route_[source])) {
+    if (is_flag_on_route(tt_, f, r_s, informative(f)) &&
+        (f != kReservationNotRequired ||
+         tt_.route_clasz_[r_t] == tt_.route_clasz_[r_s])) {
       mask |= static_cast<std::uint8_t>(1U << f);
     }
   }
@@ -167,7 +190,7 @@ void metadata_enricher::add_stop(location_idx_t const target,
   }
 }
 
-void metadata_enricher::apply() {
+void metadata_enricher::apply(import_context& ctx, shapes_storage* shapes) {
   auto const timer = scoped_timer{"loader.enrich_metadata"};
 
   auto const has_text = [&](translation_idx_t const t) {
@@ -217,6 +240,7 @@ void metadata_enricher::apply() {
   };
 
   auto n_routes = 0U;
+  auto old_types = hash_map<route_id, route_type_t>{};
   for (auto const& [r, sources] : by_target(route_ids_)) {
     auto& ids = tt_.route_ids_[r.first];
     auto const fill_from = [&](auto const member, auto&& is_set) {
@@ -231,6 +255,15 @@ void metadata_enricher::apply() {
         fill_from(&timetable::route_ids::route_id_colors_, has_color) || filled;
     filled =
         fill_from(&timetable::route_ids::route_id_wikidata_, has_id) || filled;
+    auto const type = ids.route_id_type_[r.second];
+    if (fill_from(
+            &timetable::route_ids::route_id_type_, [&](route_type_t const x) {
+              return to_idx(x) >= 100U &&
+                     mode(gtfs::to_clasz(x)) == mode(gtfs::to_clasz(type));
+            })) {
+      old_types.emplace(r, type);
+      filled = true;
+    }
     n_routes += filled ? 1U : 0U;
   }
 
@@ -265,32 +298,58 @@ void metadata_enricher::apply() {
     n_stops += filled ? 1U : 0U;
   }
 
-  // Only set a route flag if all active transports have a partner with it.
-  auto routes = utl::to_vec(
-      flags_, [&](auto const& x) { return tt_.transport_route_[x.first]; });
-  utl::erase_duplicates(routes);
-  auto n_flags = 0U;
-  for (auto const r : routes) {
-    for (auto const f : kFlags) {
-      if (tt_.is_flag_set(f, r)) {
-        continue;
+  // Routing-relevant changes: transports with the same changes get own routes.
+  auto keys = vector_map<transport_idx_t, std::uint32_t>(
+      tt_.transport_traffic_days_.size(), 0U);
+  for (auto t = transport_idx_t{0U}; t != keys.size(); ++t) {
+    if (!is_active(tt_, t)) {
+      continue;
+    }
+    auto const r = tt_.transport_route_[t];
+    if (auto const it = flags_.find(t); it != end(flags_)) {
+      for (auto const f : kFlags) {
+        if ((it->second & (1U << f)) != 0U &&
+            is_flag_on_route(tt_, f, r, !informative(f))) {
+          keys[t] |= 1U << f;
+        }
       }
-      auto all = true;
-      for (auto const t : tt_.route_transport_ranges_[r]) {
-        auto const it = flags_.find(t);
-        all = all && (!is_active(tt_, t) ||
-                      (it != end(flags_) && (it->second & (1U << f)) != 0U));
-      }
-      if (all) {
-        tt_.route_flags_[f].set(to_idx(r) * 2U, true);
-        ++n_flags;
+    }
+    if (!old_types.empty() && tt_.route_section_clasz_[r].size() == 1U) {
+      auto const id = trip_route_id(tt_, t);
+      auto const it = old_types.find(id);
+      auto const c =
+          gtfs::to_clasz(tt_.route_ids_[id.first].route_id_type_[id.second]);
+      if (it != end(old_types) &&
+          gtfs::to_clasz(it->second) == tt_.route_clasz_[r] &&
+          c != tt_.route_clasz_[r]) {
+        keys[t] |= (static_cast<std::uint32_t>(c) + 1U) << kClaszShift;
       }
     }
   }
+  auto const route_keys = regroup_transports(tt_, ctx, shapes, keys);
+  auto n_changed = 0U;
+  for (auto r = route_idx_t{0U}; r != route_keys.size(); ++r) {
+    auto const key = route_keys[r];
+    if (key == 0U) {
+      continue;
+    }
+    for (auto const f : kFlags) {
+      if ((key & (1U << f)) != 0U) {
+        tt_.route_flags_[f].set(to_idx(r) * 2U, informative(f));
+        tt_.route_flags_[f].set(to_idx(r) * 2U + 1U, informative(f));
+      }
+    }
+    if (auto const c = key >> kClaszShift; c != 0U) {
+      tt_.route_clasz_[r] = static_cast<clasz>(c - 1U);
+      tt_.route_section_clasz_[r][0] = static_cast<clasz>(c - 1U);
+    }
+    ++n_changed;
+  }
 
   log(log_lvl::info, "loader.enrich_metadata",
-      "enriched {} routes, {} agencies, {} stops, {} route flags", n_routes,
-      n_agencies, n_stops, n_flags);
+      "enriched {} route ids, {} agencies, {} stops, {} routes with new flags "
+      "or class",
+      n_routes, n_agencies, n_stops, n_changed);
 }
 
 void match_metadata_routes(

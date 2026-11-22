@@ -121,6 +121,7 @@ struct trip {
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
+  bool all_pickups_on_request_{true};
   std::array<bool, kNumRouteFlags> flags_{false, false, false, true};
   std::uint32_t from_line_{0U}, to_line_{0U};
 

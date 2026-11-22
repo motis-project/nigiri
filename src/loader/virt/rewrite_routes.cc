@@ -4,10 +4,12 @@
 #include <utility>
 #include <vector>
 
+#include "utl/helpers/algorithm.h"
 #include "utl/to_vec.h"
 
 #include "nigiri/loader/import_context.h"
 #include "nigiri/common/interval.h"
+#include "nigiri/logging.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
@@ -223,6 +225,64 @@ void rewrite_routes(
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     tt.location_routes_.emplace_back(location_routes[l]);
   }
+}
+
+vector_map<route_idx_t, std::uint32_t> regroup_transports(
+    timetable& tt,
+    import_context& ctx,
+    shapes_storage* shapes,
+    vector_map<transport_idx_t, std::uint32_t> const& keys) {
+  auto const n_routes = tt.n_routes();
+  auto base_route = vector_map<route_idx_t, route_idx_t>{};
+  auto route_transports = vecvec<route_idx_t, transport_idx_t>{};
+  auto pieces =
+      std::vector<std::pair<route_idx_t, std::vector<transport_idx_t>>>{};
+  auto groups =
+      std::vector<std::pair<std::uint32_t, std::vector<transport_idx_t>>>{};
+  for (auto r = route_idx_t{0U}; r != n_routes; ++r) {
+    groups.clear();
+    for (auto const t : tt.route_transport_ranges_[r]) {
+      if (tt.transport_traffic_days_[t] == kEmptyBitfieldIdx) {
+        continue;
+      }
+      auto it = utl::find_if(groups,
+                             [&](auto const& g) { return g.first == keys[t]; });
+      if (it == end(groups)) {
+        it = groups.insert(end(groups), {keys[t], {}});
+      }
+      it->second.push_back(t);
+    }
+    base_route.push_back(r);
+    route_transports.emplace_back(groups.empty()
+                                      ? std::vector<transport_idx_t>{}
+                                      : groups.front().second);
+    for (auto i = 1U; i < groups.size(); ++i) {
+      pieces.emplace_back(r, std::move(groups[i].second));
+    }
+  }
+
+  if (!pieces.empty() ||
+      route_transports.data_.size() != tt.transport_traffic_days_.size()) {
+    for (auto const& [o, transports] : pieces) {
+      base_route.push_back(o);
+      route_transports.emplace_back(transports);
+      auto const seq = utl::to_vec(tt.route_location_seq_[o]);
+      tt.route_location_seq_.emplace_back(seq);
+    }
+    rewrite_routes(tt, ctx, shapes, base_route, route_transports);
+    log(log_lvl::info, "loader.regroup_transports", "{} routes -> {}", n_routes,
+        tt.n_routes());
+  }
+
+  auto route_keys = vector_map<route_idx_t, std::uint32_t>{};
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    auto const transports = tt.route_transport_ranges_[r];
+    route_keys.push_back(
+        transports.empty()
+            ? 0U
+            : keys[route_transports.data_[to_idx(transports.from_)]]);
+  }
+  return route_keys;
 }
 
 }  // namespace nigiri::loader
