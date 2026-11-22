@@ -1194,7 +1194,8 @@ TEST(bmrap, anchors_are_realized_unlike_pong) {
   auto pong_as = routing::raptor_state{};
   auto const pong = routing::pong_search(tt, nullptr, pong_ss, pong_as, q,
                                          direction::kForward);
-  EXPECT_EQ(std::pair(loc("C"), day + 8h + 55min), transfer(*pong.journeys_))
+  EXPECT_EQ(std::pair(loc("C"), unixtime_t{day + 8h + 55min}),
+            transfer(*pong.journeys_))
       << "PONG: the latest departure from M, via C";
 
   auto ss = routing::search_state{};
@@ -1203,7 +1204,8 @@ TEST(bmrap, anchors_are_realized_unlike_pong) {
   auto const r =
       routing::bmrap_profile_search<routing::arr_non_transit_criteria>(
           tt, nullptr, ss, as, ms, q, direction::kForward);
-  EXPECT_EQ(std::pair(loc("B"), day + 8h + 40min), transfer(*r.journeys_))
+  EXPECT_EQ(std::pair(loc("B"), unixtime_t{day + 8h + 40min}),
+            transfer(*r.journeys_))
       << "BMRAPP: the earliest arrival at E, via B";
   EXPECT_EQ(r.journeys_->size(), r.algo_stats_.at("bmrapp_realized"));
   EXPECT_EQ(0U, r.algo_stats_.at("bmrapp_unrealized"));
