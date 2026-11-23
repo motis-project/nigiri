@@ -459,7 +459,6 @@ struct raptor {
     }
     trace("reconstruct({} - {}, {} transfers", j.departure_time(),
           j.arrival_time(), j.transfers_);
-    init_rounds_up_to(j.transfers_ + 1U);
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
   }
 
