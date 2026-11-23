@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "utl/to_vec.h"
+
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -215,11 +217,20 @@ TEST(loader, enrich_from_metadata_feed) {
   EXPECT_EQ("https://www.wikidata.org/wiki/Q111",
             wikidata_url(tt, tt.locations_.wikidata_[*s1]));
   EXPECT_EQ("Alpha", tt.get_default_translation(tt.locations_.names_[*s1]));
-  EXPECT_EQ("アルファ", translation_in(tt, tt.locations_.names_[*s1], "ja"));
+  EXPECT_EQ("", translation_in(tt, tt.locations_.names_[*s1], "ja"));
 
   auto const s2 = tt.find({"S2", src});
   ASSERT_TRUE(s2.has_value());
   EXPECT_FALSE(tt.locations_.wikidata_[*s2].valid());
+
+  auto const is_meta = [&](location_idx_t const l) {
+    return tt.locations_.src_[l] == source_idx_t{1U};
+  };
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][l]) {
+      EXPECT_FALSE(is_meta(l) || is_meta(fp.target()));
+    }
+  }
 }
 
 TEST(loader, metadata_feed_requires_line_name_match) {
@@ -303,6 +314,124 @@ TEST(loader, enrich_from_duplicates) {
             wikidata_url(tt, tt.locations_.wikidata_[first_stop]));
   EXPECT_TRUE(
       tt.route_flags_[kBikesAllowed][to_idx(tt.transport_route_[active]) * 2U]);
+}
+
+namespace {
+
+std::string replaced(std::string s,
+                     std::string_view const from,
+                     std::string_view const to) {
+  s.replace(s.find(from), from.size(), to);
+  return s;
+}
+
+transport_idx_t active_transport(timetable const& tt) {
+  for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
+    if (tt.bitfields_[tt.transport_traffic_days_[t]].any()) {
+      return t;
+    }
+  }
+  return transport_idx_t::invalid();
+}
+
+trip_idx_t first_trip(timetable const& tt, transport_idx_t const t) {
+  return tt.merged_trips_[tt.transport_to_trip_section_[t].front()].front();
+}
+
+}  // namespace
+
+TEST(loader, metadata_feed_number_only_match_covers_both) {
+  auto const enriched = [](std::string_view const real_name,
+                           bool const clip_line) {
+    auto const real =
+        mem_dir::read(replaced(std::string{kRealFeed}, "R1,bvg,M4,",
+                               "R1,bvg," + std::string{real_name} + ","));
+    auto meta_str = std::string{kMetadataFeed};
+    if (clip_line) {
+      meta_str = replaced(meta_str,
+                          "osm:r10,,,osm:x,2\nosm:r10,,,osm:c,3\n"
+                          "osm:r10,,,osm:d,4\nosm:r10,,,osm:unknown,5\n",
+                          "");
+    }
+    auto const meta = mem_dir::read(meta_str);
+    auto const tt = load(std::vector<dir_source>{{real}, {meta}}, kDateRange);
+    auto const r = route_id(tt, source_idx_t{0U}, "R1");
+    return tt.route_ids_[source_idx_t{0U}].route_id_wikidata_[r].valid();
+  };
+  EXPECT_TRUE(enriched("M4", true));
+  EXPECT_TRUE(enriched("4", false));
+  EXPECT_FALSE(enriched("4", true));
+}
+
+TEST(loader, enrich_route_type_and_clasz) {
+  // The first feed's transport is absorbed by the second feed's one.
+  auto const real = mem_dir::read(
+      replaced(std::string{kRealFeed}, "R1,bvg,M4,,0", "R1,bvg,M4,,102"));
+  auto const dup = mem_dir::read(
+      replaced(std::string{kDuplicateFeed}, "V1,vbb,M4,,0,", "V1,vbb,M4,,2,"));
+  auto const tt =
+      load(std::vector<dir_source>{{real}, {dup}}, kDateRange,
+           {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = true});
+
+  auto const t = active_transport(tt);
+  ASSERT_NE(transport_idx_t::invalid(), t);
+  auto const [src, r] = std::pair{tt.trip_id_src_[first_trip(tt, t)],
+                                  tt.trip_route_id_[first_trip(tt, t)]};
+  EXPECT_EQ(source_idx_t{1U}, src);
+  EXPECT_EQ(route_type_t{102U}, tt.route_ids_[src].route_id_type_[r]);
+  EXPECT_EQ(clasz::kLongDistance, tt.route_clasz_[tt.transport_route_[t]]);
+}
+
+TEST(loader, enrichment_splits_route) {
+  // Only VT1 has a duplicate with bikes allowed: VT2 keeps its route.
+  auto const real =
+      mem_dir::read(replaced(std::string{kRealFeed}, "trip_id\nR1,WD,T1",
+                             "trip_id,bikes_allowed\nR1,WD,T1,1"));
+  auto const dup = mem_dir::read(
+      replaced(replaced(std::string{kDuplicateFeed}, "V1,WD,VT1,1",
+                        "V1,WD,VT1,\nV1,WD,VT2,"),
+               "VT1,10:06:00,10:06:00,X4,4",
+               "VT1,10:06:00,10:06:00,X4,4\nVT2,11:00:00,11:00:00,X1,1\n"
+               "VT2,11:02:00,11:02:00,X2,2\nVT2,11:04:00,11:04:00,X3,3\n"
+               "VT2,11:06:00,11:06:00,X4,4"));
+  auto const tt =
+      load(std::vector<dir_source>{{real}, {dup}}, kDateRange,
+           {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = true});
+
+  ASSERT_EQ(transport_idx_t{2U}, tt.next_transport_idx());
+  ASSERT_EQ(2U, tt.n_routes());
+  EXPECT_NE(tt.is_flag_set(kBikesAllowed, route_idx_t{0U}),
+            tt.is_flag_set(kBikesAllowed, route_idx_t{1U}));
+}
+
+TEST(loader, reservation_from_pickup_type) {
+  auto const on_request = mem_dir::read(
+      replaced(std::string{kRealFeed},
+               "stop_id,stop_sequence\nT1,10:00:00,10:00:00,S1,1\n"
+               "T1,10:02:00,10:02:00,S2,2\nT1,10:04:00,10:04:00,S3,3\n"
+               "T1,10:06:00,10:06:00,S4,4",
+               "stop_id,stop_sequence,pickup_type\n"
+               "T1,10:00:00,10:00:00,S1,1,2\nT1,10:02:00,10:02:00,S2,2,2\n"
+               "T1,10:04:00,10:04:00,S3,3,2\nT1,10:06:00,10:06:00,S4,4,2"));
+  auto const dup = mem_dir::read(kDuplicateFeed);
+
+  auto config = loader_config{};
+  config.reservation_not_required_default_.fill(true);
+  auto const reservation_required = [&](std::vector<dir const*> const& dirs) {
+    auto const sources = utl::to_vec(dirs, [&](dir const* d) {
+      return dir_source{.dir_ = *d, .loader_config_ = config};
+    });
+    auto const tt =
+        load(sources, kDateRange,
+             {.merge_dupes_intra_src_ = false, .merge_dupes_inter_src_ = true});
+    auto const t = active_transport(tt);
+    return t != transport_idx_t::invalid() &&
+           !tt.is_flag_set(kReservationNotRequired, tt.transport_route_[t]);
+  };
+
+  EXPECT_TRUE(reservation_required({&on_request}));
+  EXPECT_FALSE(reservation_required({&dup}));
+  EXPECT_TRUE(reservation_required({&on_request, &dup}));
 }
 
 // The absorbed duplicate's route is removed: GTFS-RT updates for its trip id

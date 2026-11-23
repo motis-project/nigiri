@@ -136,9 +136,9 @@ void build_footpaths(timetable& tt,
 
   if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_ ||
       !ctx.metadata_only_sources_.empty()) {
-    merge_duplicates(tt, ctx, opt.merge_threshold_, opt.merge_dupes_intra_src_,
-                     opt.merge_dupes_inter_src_, opt.merge_stats_dir_,
-                     opt.src_tags_);
+    merge_duplicates(tt, ctx, shapes, opt.merge_threshold_,
+                     opt.merge_dupes_intra_src_, opt.merge_dupes_inter_src_,
+                     opt.merge_stats_dir_, opt.src_tags_);
   }
 
   if (opt.compute_walks_) {

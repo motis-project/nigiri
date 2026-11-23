@@ -236,6 +236,7 @@ void merge_route_pair(timetable& tt,
 
 void merge_duplicates(timetable& tt,
                       import_context& ctx,
+                      shapes_storage* shapes,
                       merge_threshold_t const& clasz_threshold,
                       bool const intra_src,
                       bool const inter_src,
@@ -458,7 +459,7 @@ void merge_duplicates(timetable& tt,
   }
 
   match_metadata_routes(tt, ctx, neighbours, enricher);
-  enricher.apply();
+  enricher.apply(ctx, shapes);
 
   stats.provider_overlap_.finish(stats.provider_n_transports_.size());
   stats.src_overlap_.finish(stats.src_n_transports_.size());
