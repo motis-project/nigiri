@@ -194,8 +194,9 @@ struct raptor {
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     if constexpr (LazyReset) {
-      state_.n_init_rounds_ = 0U;
-      init_rounds_up_to(0U);
+      utl::fill(round_times_.entries_.subspan(0U, round_times_.n_columns_),
+                kInvalidArray);
+      state_.n_init_rounds_ = 1U;
     } else {
       round_times_.reset(kInvalidArray);
       state_.n_init_rounds_ = kMaxTransfers + 2U;
@@ -248,7 +249,13 @@ struct raptor {
       update_one_to_all_arrivals(0U);
     }
     for (auto k = 1U; k != end_k; ++k) {
-      init_rounds_up_to(k);
+      if constexpr (LazyReset) {
+        if (k == state_.n_init_rounds_) {
+          auto const n = round_times_.n_columns_;
+          utl::fill(round_times_.entries_.subspan(k * n, n), kInvalidArray);
+          ++state_.n_init_rounds_;
+        }
+      }
 
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
@@ -467,15 +474,6 @@ struct raptor {
   }
 
 private:
-  void init_rounds_up_to(unsigned const k) {
-    if constexpr (LazyReset) {
-      auto const n = round_times_.n_columns_;
-      for (auto& i = state_.n_init_rounds_; i <= k; ++i) {
-        utl::fill(round_times_.entries_.subspan(i * n, n), kInvalidArray);
-      }
-    }
-  }
-
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
