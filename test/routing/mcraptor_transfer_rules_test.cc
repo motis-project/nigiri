@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include "nigiri/routing/raptor/bmraptor.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
@@ -47,6 +48,16 @@ TEST(mcraptor_transfer_rules, banned_stop_keeps_walk_ins) {
                        "Q,Q,3,,,,,\n")});
   // the harness also runs every mcraptor engine and expects raptor's journeys
   EXPECT_EQ(at("11:00"), arrival_at(tt, "A", "D", "10:00"));
+
+  // BMRAPP's bounds must not prune the walk-in at Q either (a departure
+  // interval: BMRAPP hands a fixed time to mcraptor)
+  auto const q = exact_query(tt, "A", "D", interval{at("09:55"), at("10:05")});
+  auto ss = routing::search_state{};
+  auto as = routing::raptor_state{};
+  auto ms = routing::mcraptor_non_transit_state{};
+  EXPECT_EQ(1U, routing::bmrap_profile_search(tt, nullptr, ss, as, ms, q,
+                                              direction::kForward)
+                    .journeys_->size());
 }
 
 // S takes 6 min to change (S,S row), R1 -> R2 15 min: R1 cannot share a

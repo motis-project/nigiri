@@ -191,6 +191,7 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
     std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
     pareto_set<journey>& results) {
   auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
+  cur_budget_ = end_k - 1U;
 
   // one bound for all rounds: the loosest
   auto const worst = kFwd ? std::ranges::max(worst_time_at_dest)
@@ -260,15 +261,17 @@ bool basic_mcraptor<SearchDir, Criteria>::alight(unsigned const k,
                                                  clasz const ride_clasz,
                                                  std::uint32_t const transport,
                                                  day_idx_t const day) {
-  auto const lb = lb_[l_idx];
+  auto const lb = effective_lb(l_idx);
   if (!is_better(by_transport, worst_at_dest_) || lb == kUnreachable ||
-      !is_better(by_transport + dir(lb), worst_at_dest_)) {
+      !is_better(by_transport + dir(lb), worst_at_dest_) ||
+      bound_prunes(k, l_idx, by_transport)) {
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
   }
   auto const ride_crit =
       Criteria::from_ride(by_transport, ride_clasz, rl.carried_, ctx_);
-  if (dest_dominates(k,
+  if (!guide_feasible(l_idx, k, by_transport, ride_crit.extras_) ||
+      dest_dominates(k,
                      ride_crit.projected_to(clamp(by_transport + dir(lb))))) {
     ++stats_.route_update_prevented_by_lower_bound_;
     return false;
@@ -359,16 +362,16 @@ bool basic_mcraptor<SearchDir, Criteria>::scan_stops(
       continue;
     }
 
-    if (lb_[l_idx] == kUnreachable) {
+    auto const lb = effective_lb(l_idx);
+    if (lb == kUnreachable) {
       break;
     }
 
     auto const banned = no_transfer(l_idx);
     for_each_label(l_idx, k - 1U, [&](typename state_t::label const& e) {
-      // even the optimistic completion is dominated
       if (!(banned && e.by_route_) &&
           !dest_dominates(
-              k, e.crit_.projected_to(clamp(e.crit_.arr_ + dir(lb_[l_idx]))))) {
+              k, e.crit_.projected_to(clamp(e.crit_.arr_ + dir(lb))))) {
         board_label(e.crit_, e.breadcrumb_, stop_idx, l);
       }
     });
@@ -584,11 +587,13 @@ void basic_mcraptor<SearchDir, Criteria>::update_footpaths(unsigned const k) {
           if (!is_better(fp_crit.arr_, worst_at_dest_)) {
             return;
           }
-          auto const lb = lb_[target];
+          auto const lb = effective_lb(target);
           if (lb == kUnreachable ||
               !is_better(fp_crit.arr_ + dir(lb), worst_at_dest_) ||
               dest_dominates(
-                  k, fp_crit.projected_to(clamp(fp_crit.arr_ + dir(lb))))) {
+                  k, fp_crit.projected_to(clamp(fp_crit.arr_ + dir(lb)))) ||
+              !guide_feasible(target, k, fp_crit.arr_, fp_crit.extras_) ||
+              bound_prunes(k, target, fp_crit.arr_, transfer_buffer(target))) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             return;
           }
@@ -703,7 +708,7 @@ transport basic_mcraptor<SearchDir, Criteria>::get_earliest_transport(
     return lo;
   };
 
-  auto const lb = dir(lb_[to_idx(l)]);
+  auto const lb = dir(effective_lb(to_idx(l)));
   constexpr auto const kNDaysToIterate =
       kMaxTravelTime / std::chrono::days{1} + 1U;
   for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
@@ -818,6 +823,65 @@ template <direction SearchDir, typename Criteria>
 std::pair<day_idx_t, minutes_after_midnight_t>
 basic_mcraptor<SearchDir, Criteria>::split(delta_t const x) const {
   return split_day_mam(base_, x);
+}
+
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::take_guide() {
+  auto& g = state_.guide_[kDirIdx];
+  for (auto const l : g.stops_) {
+    g.n_[l] = 0U;
+  }
+  g.stops_.clear();
+  g.labels_.clear();
+  g.begin_.resize(state_.bag_.bags_.size());
+  g.n_.resize(state_.bag_.bags_.size(), 0U);
+  state_.bag_.touched_.for_each_set_bit([&](auto const i) {
+    auto const l = static_cast<std::uint32_t>(i);
+    auto const bag = state_.bag_.span(l);
+    if (bag.empty()) {
+      return;
+    }
+    g.begin_[l] = static_cast<std::uint32_t>(g.labels_.size());
+    g.n_[l] = static_cast<std::uint32_t>(bag.size());
+    g.stops_.push_back(l);
+    for (auto const& e : bag) {
+      g.labels_.push_back({e.crit_.arr_, e.round_, e.crit_.extras_});
+    }
+  });
+}
+
+template <direction SearchDir, typename Criteria>
+void basic_mcraptor<SearchDir, Criteria>::set_guide(
+    std::vector<journey const*> const& targets) {
+  guide_targets_.clear();
+  for (auto const* j : targets) {
+    guide_targets_.push_back(
+        {.trips_ = static_cast<std::uint8_t>(j->transfers_ + 1U),
+         .extras_ =
+             static_cast<std::uint16_t>(Criteria::extras_t::of_journey(*j))});
+  }
+}
+
+template <direction SearchDir, typename Criteria>
+bool basic_mcraptor<SearchDir, Criteria>::guide_feasible(
+    std::uint32_t const l,
+    unsigned const k,
+    delta_t const t,
+    std::uint32_t const extras) const {
+  if (guide_targets_.empty()) {
+    return true;
+  }
+  auto const& g = state_.guide_[kDirIdx ^ 1U];
+  auto const labels =
+      l < g.n_.size() && g.n_[l] != 0U
+          ? std::span<mc_guide_entry const>{g.labels_.data() + g.begin_[l],
+                                            g.n_[l]}
+          : std::span<mc_guide_entry const>{};
+  return routing::guide_feasible<SearchDir, typename Criteria::extras_t>(
+      labels, guide_targets_, k, t, extras,
+      adjusted_transfer_time(
+          transfer_time_settings_,
+          get_transfer_time(tt_, rtt_, location_idx_t{l}).count()));
 }
 
 #define NIGIRI_MC_INSTANTIATE(C)                          \

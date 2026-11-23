@@ -22,6 +22,7 @@
 #include "nigiri/routing/mc_criteria.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/bmrap_bounds.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/routing/transfers.h"
@@ -260,6 +261,14 @@ struct basic_mcraptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   bitvec rt_transport_mark_;
+
+  // guided searches: one copy per direction (take_guide()), read by the other
+  struct guide_copy {
+    std::vector<mc_guide_entry> labels_;
+    std::vector<std::uint32_t> begin_, n_;  // per location
+    std::vector<std::uint32_t> stops_;  // those with labels
+  };
+  std::array<guide_copy, 2> guide_;
 };
 
 // As raptor's round times, the bags outlive next_start_time() (rRAPTOR, latest
@@ -272,7 +281,9 @@ struct basic_mcraptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kNeedsLbWhenBounded = false;  // see effective_lb()
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
+  static constexpr auto const kDirIdx = kFwd ? 0U : 1U;
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
   static constexpr auto const kUnreachable =
       std::numeric_limits<std::uint16_t>::max();
@@ -318,6 +329,16 @@ struct basic_mcraptor {
       std::uint8_t max_transfers,
       std::array<unixtime_t, kMaxTransfers + 2U> const& worst_time_at_dest,
       pareto_set<journey>& results);
+
+  // BM-RAPTOR bounds on this search's base day; nullptr: plain McRAPTOR
+  void set_bounds(bmrap_bounds const* b) { bounds_ = b; }
+
+  // Guided searches (bmrap_profile.cc), as on the GPU: take_guide() copies
+  // this search's labels, a search of the other direction with set_guide()
+  // keeps only the labels that join one of them into one of the targets
+  // (routing::guide_feasible()). No targets: not guided.
+  void take_guide();
+  void set_guide(std::vector<journey const*> const& targets);
 
   void reconstruct(query const&, journey&);
 
@@ -401,18 +422,50 @@ private:
            kNoTransferAllowed;
   }
 
-  // Destination pruning: a pareto frontier over (round, criteria); a candidate
-  // is pruned iff its lb projection is dominated by an entry of no more rounds.
-  // Persists across start times.
+  // see set_guide()
+  bool guide_feasible(std::uint32_t l,
+                      unsigned k,
+                      delta_t t,
+                      std::uint32_t extras) const;
+
+  // t worse than tau_dep^<-(l, trips left)? The bound is post-transfer:
+  // footpath arrivals pay no buffer and pass it as `slack`.
+  bool bound_prunes(unsigned const k,
+                    std::uint32_t const l,
+                    delta_t const t,
+                    int const slack = 0) const {
+    if (bounds_ == nullptr) {
+      return false;
+    }
+    // row: see bmrap_bounds::staggered_
+    auto const budget = std::min<unsigned>(cur_budget_, bounds_->budget_);
+    if (k > budget) {
+      return true;
+    }
+    auto const row = bounds_->staggered_ ? bounds_->budget_ - k : budget - k;
+    return !is_better_or_eq(
+        t, clamp(static_cast<int>(bounds_->at(row, l)) + slack));
+  }
+
+  // bounded, bound_prunes() is the tighter cutoff
+  std::uint16_t effective_lb(std::uint32_t const l_idx) const {
+    return bounds_ == nullptr ? lb_[l_idx] : std::uint16_t{0U};
+  }
+
+  // destination frontier over (round, criteria), across start times
   struct dest_entry {
     unsigned k_;
     Criteria crit_;
   };
 
+  // Strict: a tie survives, so the bags keep every label that can complete to
+  // one of the results (what guided searches join against).
   bool dest_dominates(unsigned const k, Criteria const& projected) const {
     for (auto const& e : dest_bag_) {
       if (e.k_ <= k &&
-          e.crit_.template completed_dominates<SearchDir>(projected)) {
+          e.crit_.template completed_dominates<SearchDir>(projected) &&
+          !(k <= e.k_ &&
+            projected.template completed_dominates<SearchDir>(e.crit_))) {
         return true;
       }
     }
@@ -456,8 +509,10 @@ private:
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   mc_start start_;
   std::vector<std::uint16_t> const& lb_;
-  // search-window bound only; dest_bag_ owns destination pruning
-  delta_t worst_at_dest_;
+  delta_t worst_at_dest_;  // search window only, see dest_bag_
+  bmrap_bounds const* bounds_{nullptr};
+  std::vector<mc_guide_target> guide_targets_;  // see set_guide()
+  unsigned cur_budget_{0U};  // trips of the current start time
   std::vector<dest_entry> dest_bag_;
   delta_t cur_dep_{};
   // inserted in execute() once the ingress is known
