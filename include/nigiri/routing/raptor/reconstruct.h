@@ -18,10 +18,12 @@ struct journey;
 
 void map_to_bases(timetable const&, rt_timetable const*, journey&);
 
+// optimize_fps = false: the legs as found (tests compare mcraptor's)
 void finalize_journey(timetable const&,
                       rt_timetable const*,
                       query const&,
-                      journey&);
+                      journey&,
+                      bool optimize_fps = true);
 
 bool is_journey_start(timetable const&, query const&, location_idx_t);
 
@@ -52,4 +54,12 @@ void optimize_footpaths(timetable const&,
                         query const&,
                         journey&);
 
+// Offset legs (intermodal first / last mile, also td) and the start footpath
+// around the chronological transit legs of j, for the engines that rebuild
+// those legs themselves (gpu raptor, mcraptor).
+template <direction SearchDir>
+void add_offset_legs(timetable const&,
+                     rt_timetable const*,
+                     query const&,
+                     journey&);
 }  // namespace nigiri::routing

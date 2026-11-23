@@ -8,6 +8,7 @@
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/mc_context.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/raptor_stats.h"
@@ -82,7 +83,8 @@ struct gpu_raptor {
       bool const is_wheelchair,
       bool const no_compulsory_reservation_,
       transfer_time_settings const& tts,
-      profile_idx_t const prf_idx);
+      profile_idx_t const prf_idx,
+      mc_context const& = {});
 
   raptor_stats get_stats() const { return stats_; }
   void reset_arrivals();

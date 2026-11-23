@@ -128,6 +128,9 @@ struct query {
   std::optional<interval<unixtime_t>> max_interval_{};
   profile_idx_t prf_idx_{0};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
+  // McRAPTOR's avoided-modes criterion (avoided_modes_dim): prefer journeys
+  // without these classes
+  clasz_mask_t avoided_claszes_{to_mask(clasz::kAir)};
   bool require_bike_transport_{false};
   bool require_car_transport_{false};
   bool no_compulsory_reservation_{false};

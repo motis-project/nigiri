@@ -7,6 +7,9 @@
 
 namespace nigiri::routing::gpu {
 
+// td egress offsets on the device, indexed by position in the location set.
+using td_dest_group_idx_t = cista::strong<std::uint32_t, struct td_dest_group_>;
+using td_dest_offsets_t = vecvec<td_dest_group_idx_t, td_offset>;
 struct d_td_result {
   duration_t duration_{kTdFootpathBan};
   std::uint32_t idx_{0U};  // winning entry index (for its transport mode)
@@ -66,7 +69,7 @@ __device__ void d_for_each_td_footpath(Collection const& c,
     }
     auto const r = d_get_td_duration<SearchDir>(c, i, j, t);
     if (r.valid_) {
-      f(c[i].target_, r.duration_);
+      f(c[i].target_, r.duration_, c[r.idx_].duration_);
     }
     i = j;
   }

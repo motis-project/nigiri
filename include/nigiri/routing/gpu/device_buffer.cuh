@@ -29,10 +29,15 @@ struct device_buffer {
   T* ensure(std::size_t const n, cudaStream_t const stream) {
     if (n > cap_) {
       if (ptr_ != nullptr) {
-        CUDA_CHECK(cudaFreeAsync(ptr_, stream));
+        // forget the old buffer first: if the allocation below throws, a
+        // later ensure() must not hand out (nor the dtor free) freed memory
+        auto* const old = ptr_;
+        ptr_ = nullptr;
+        size_ = cap_ = 0U;
+        CUDA_CHECK(cudaFreeAsync(old, stream));
       }
-      CUDA_CHECK(cudaMallocAsync(reinterpret_cast<void**>(&ptr_),
-                                 n * sizeof(T), stream));
+      CUDA_CHECK(cudaMallocAsync(reinterpret_cast<void**>(&ptr_), n * sizeof(T),
+                                 stream));
       cap_ = n;
     }
     size_ = n;

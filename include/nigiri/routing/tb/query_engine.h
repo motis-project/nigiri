@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/mc_context.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/tb/queue.h"
@@ -96,7 +97,8 @@ struct query_engine {
                bool,
                bool,
                transfer_time_settings,
-               profile_idx_t);
+               profile_idx_t,
+               mc_context const& = {});
 
   algo_stats_t get_stats() const { return stats_; }
 
