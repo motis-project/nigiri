@@ -41,7 +41,6 @@ namespace nigiri::rt::vdv_aus {
 constexpr auto const kExactMatchScore = 230;
 constexpr auto const kFirstMatchThreshold = 0.5;
 constexpr auto const kFirstMatchThresholdIncomplete = 0.7;
-constexpr auto const kAdditionalMatchThreshold = 0.975;
 constexpr auto const kLineMatchBonus = std::uint32_t{kExactMatchScore};
 constexpr auto const kRootMatchWindow = std::size_t{3U};
 constexpr auto const kAllowedTimeDiscrepancy = []() {
@@ -420,7 +419,9 @@ struct candidate {
 
   friend bool operator<(candidate const& a, candidate const& b) {
     return a.total() > b.total() ||
-           (a.total() == b.total() && a.total_length_ < b.total_length_);
+           (a.total() == b.total() &&
+            (a.total_length_ < b.total_length_ ||
+             (a.total_length_ == b.total_length_ && a.r_.t_ < b.r_.t_)));
   }
 
   friend bool operator==(candidate const& a, candidate const& b) {
@@ -559,12 +560,6 @@ void updater::match_run(run_id const& vdv_id,
 
   utl::sort(candidates);
 
-  auto const is_match = [&](auto const& c) {
-    auto const& best = candidates.front();
-    return c.line_match_ == best.line_match_ &&
-           c.score_ > best.score_ * kAdditionalMatchThreshold;
-  };
-
   auto const match_threshold =
       is_complete_run ? kFirstMatchThreshold : kFirstMatchThresholdIncomplete;
   auto const n_counted =
@@ -579,14 +574,8 @@ void updater::match_run(run_id const& vdv_id,
   if (!candidates.empty() &&
       (candidates.front().total() >
        n_counted * kExactMatchScore * match_threshold + kLineMatchBonus)) {
-    for (auto const& c : candidates) {
-      if (is_match(c)) {
-        vdv_trace("match_run(vdv_run_id={})\n", vdv_run_id);
-        matches_[vdv_run_id].runs_.emplace_back(c.r_);
-      } else {
-        break;
-      }
-    }
+    vdv_trace("match_run(vdv_run_id={})\n", vdv_run_id);
+    matches_[vdv_run_id].runs_.emplace_back(candidates.front().r_);
   }
 
   [[maybe_unused]] auto const candidate_str = [&](candidate const& c) {
@@ -600,17 +589,6 @@ void updater::match_run(run_id const& vdv_id,
               candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats.matched_runs_;
-    if (matches_[vdv_run_id].runs_.size() > 1) {
-      ++stats.multiple_matches_;
-      vdv_trace("[vdv_aus] multiple matches for {}:", vdv_run_id);
-      for (auto const& c : candidates) {
-        if (!is_match(c)) {
-          break;
-        }
-        vdv_trace("{}", candidate_str(c));
-      }
-      vdv_trace("\n");
-    }
   }
 }
 

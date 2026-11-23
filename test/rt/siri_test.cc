@@ -1035,8 +1035,7 @@ constexpr auto const kMultipleMatchesMsg2 =
 TEST(siri_update, matching) {
   auto const src_idx = source_idx_t{0};
   auto tt =
-      loader::load(siri_test_files(), {2025_y / July / 1, 2025_y / July / 31},
-                   {.merge_dupes_intra_src_ = false});
+      loader::load(siri_test_files(), {2025_y / July / 1, 2025_y / July / 31});
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 3});
 
@@ -1113,7 +1112,6 @@ TEST(siri_update, matching) {
         .first.is_rt();
   };
   EXPECT_TRUE(is_rt("2867631759"));
-  EXPECT_FALSE(is_rt("2867631759_twin"));
 
   auto msg_s3 = std::string{kMsg};
   msg_s3.replace(msg_s3.find("<PublishedLineName>S2"), 21U,

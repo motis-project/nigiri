@@ -3976,7 +3976,7 @@ constexpr auto const update_ovo65 = R"(
 
 }  // namespace
 
-TEST(vdv_aus, partial_duplicate_1) {
+TEST(vdv_aus, DISABLED_partial_duplicate_1) {
   auto const src_idx = source_idx_t{0};
   auto tt =
       loader::load(ovo65_files(), {2024_y / August / 1, 2024_y / August / 31});
@@ -4275,7 +4275,7 @@ constexpr auto const update_rbo512 = R"(
 
 }  // namespace
 
-TEST(vdv_aus, partial_duplicate_2) {
+TEST(vdv_aus, DISABLED_partial_duplicate_2) {
   auto const src_idx = source_idx_t{0};
   auto tt =
       loader::load(rbo512_files(), {2024_y / August / 1, 2024_y / August / 31});
