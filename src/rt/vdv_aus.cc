@@ -331,6 +331,9 @@ bool line_matches(timetable const& tt,
   auto has_name = false;
   auto is_match = false;
   fr.for_each_trip([&](trip_idx_t, interval<stop_idx_t> const subrange) {
+    if (subrange.intersect(fr.stop_range_).empty()) {
+      return;
+    }
     auto const name =
         fr[static_cast<stop_idx_t>(subrange.from_ - fr.stop_range_.from_)]
             .route_short_name(event_type::kDep, std::nullopt);
@@ -404,7 +407,9 @@ struct candidate {
 
       if (best_seq_score[to_idx] > score_) {
         score_ = best_seq_score[to_idx];
-        r_.stop_range_.from_ = best_seq_start[to_idx];
+        matched_stops_ = {best_seq_start[to_idx],
+                          static_cast<stop_idx_t>(to.stop_idx_ + 1U)};
+        r_.stop_range_.from_ = matched_stops_.from_;
       }
     }
   }
@@ -426,6 +431,7 @@ struct candidate {
   std::uint32_t score_{0U};
   std::uint32_t total_length_;
   bool line_match_{true};
+  interval<stop_idx_t> matched_stops_{};
   vector_map<call_match_idx_t, call_match> call_matches_;
 };
 
@@ -547,7 +553,8 @@ void updater::match_run(run_id const& vdv_id,
 
   for (auto& c : candidates) {
     c.align();
-    c.line_match_ = line_matches(tt_, vdv_id.line_, c.r_);
+    c.line_match_ = line_matches(
+        tt_, vdv_id.line_, run{.t_ = c.r_.t_, .stop_range_ = c.matched_stops_});
   }
 
   utl::sort(candidates);

@@ -1606,3 +1606,80 @@ TEST(siri_update, nearby_stops_own_stop_served_later) {
   EXPECT_EQ(2, fr[0].delay(event_type::kDep).count());
   EXPECT_EQ(2, fr[2].delay(event_type::kDep).count());
 }
+
+mem_dir line_change_block_files() {
+  return mem_dir::read(R"__(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+RPM,regiobus Potsdam Mittelmark,https://example.org,Europe/Berlin
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DAILY,1,1,1,1,1,1,1,20250701,20250731
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+s1,S1,52.700000,13.400000,0,
+s2,S2,52.710000,13.400000,0,
+s3,S3,52.720000,13.400000,0,
+s4,S4,52.730000,13.400000,0,
+s5,S5,52.740000,13.400000,0,
+s6,S6,52.750000,13.400000,0,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+X,RPM,X,,3
+Y,RPM,Y,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+X,DAILY,blk_x,S3,B1
+Y,DAILY,blk_y,S6,B1
+Y,DAILY,pre_b2,S2,B2
+Y,DAILY,end_b2,S4,B2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+blk_x,13:00:00,13:00:00,s1,0
+blk_x,13:05:00,13:05:00,s2,1
+blk_x,13:10:00,13:10:00,s3,2
+blk_y,13:12:00,13:12:00,s3,0
+blk_y,13:15:00,13:15:00,s4,1
+blk_y,13:18:00,13:18:00,s5,2
+blk_y,13:21:00,13:21:00,s6,3
+pre_b2,13:01:00,13:01:00,s1,0
+pre_b2,13:06:00,13:06:00,s2,1
+end_b2,13:07:00,13:07:00,s2,0
+end_b2,13:15:00,13:15:00,s4,1
+)__");
+}
+
+constexpr auto const kLineChangeBlockCalls = R"(
+            <EstimatedCall>
+              <StopPointRef>s4</StopPointRef>
+              <AimedArrivalTime>DATET13:15:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET13:16:00+02:00</ExpectedArrivalTime>
+              <AimedDepartureTime>DATET13:15:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET13:16:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>s5</StopPointRef>
+              <AimedDepartureTime>DATET13:18:00+02:00</AimedDepartureTime>
+              <ExpectedDepartureTime>DATET13:19:00+02:00</ExpectedDepartureTime>
+            </EstimatedCall>
+            <EstimatedCall>
+              <StopPointRef>s6</StopPointRef>
+              <AimedArrivalTime>DATET13:21:00+02:00</AimedArrivalTime>
+              <ExpectedArrivalTime>DATET13:22:00+02:00</ExpectedArrivalTime>
+            </EstimatedCall>)";
+
+TEST(siri_update, line_match_only_on_matched_trip) {
+  auto const t = siri_fixture{line_change_block_files()};
+
+  auto const thursday = date::sys_days{2025_y / July / 3};
+  auto const rtt_x = t.update(thursday, "X", "blk#RPM#", kLineChangeBlockCalls);
+  EXPECT_FALSE(t.resolve(rtt_x, thursday, "blk_y", "13:12:00").is_rt());
+
+  auto const rtt_y = t.update(thursday, "Y", "blk#RPM#", kLineChangeBlockCalls);
+  EXPECT_TRUE(t.resolve(rtt_y, thursday, "blk_y", "13:12:00").is_rt());
+}
