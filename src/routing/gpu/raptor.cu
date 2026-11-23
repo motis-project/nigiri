@@ -293,13 +293,15 @@ struct gpu_raptor_state::impl {
   std::uint64_t reach_tag_[2]{0U, 0U};
 
   // Sized for any trip budget, before the mc state takes the rest of the
-  // device (a growth later failed mid-query). Idempotent.
+  // device (a growth later failed mid-query). Idempotent; per slot, so a slot
+  // a failed attempt left short is retried (and fails as out of memory).
   static constexpr auto kBmrapRows = std::size_t{kMaxTransfers} + 2U;
   void reserve_bmrap() {
     auto const n = static_cast<std::size_t>(tt_.n_locations_) * kBmrapRows;
-    if (reach_out_[0].size() != n) {
-      reach_out_[0].resize(n);
-      reach_out_[1].resize(n);
+    for (auto& r : reach_out_) {
+      if (r.size() != n) {
+        r.resize(n);
+      }
     }
   }
 
