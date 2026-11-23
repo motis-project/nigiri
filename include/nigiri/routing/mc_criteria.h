@@ -18,10 +18,11 @@
 // A criterion owns fields of mc_fields, the label's 16 bits. Derived from
 // mc_dim (no-op updates, kRide false), it defines what applies of
 //   kRide                    whether a ride changes its fields
-//   kRideTimes               whether it needs the ride's times (CPU only)
+//   kRideTimes               whether it needs the ride's local times (CPU)
 //   at_start(f, minutes)     a start label (minutes walked to it)
 //   after_ride(f, c, ctx)    after riding a trip of class c
-//   after_ride_times(f, board, alight)  after a ride boarded and alighted then
+//   after_ride_times(f, board, alight)  after a ride, boarded and alighted at
+//                            these minutes of the local day
 //   after_walk(f, minutes)   after a walk (offset, footpath)
 //   complete(f)              drops what only counts while the journey goes on
 //   dominates(a, b)          a is no worse than b; on complete() fields, also
@@ -57,8 +58,7 @@ struct mc_dim {
   CISTA_CUDA_COMPAT static void after_ride(mc_fields&,
                                            clasz,
                                            mc_context const&) {}
-  CISTA_CUDA_COMPAT static void after_ride_times(mc_fields&, delta_t, delta_t) {
-  }
+  CISTA_CUDA_COMPAT static void after_ride_times(mc_fields&, int, int) {}
   CISTA_CUDA_COMPAT static void after_walk(mc_fields&, std::uint32_t) {}
   CISTA_CUDA_COMPAT static void complete(mc_fields&) {}
 };
@@ -202,15 +202,14 @@ struct mode_switches_dim : mc_dim {
 // ---- night transfer ---------------------------------------------------------
 // "Boards or alights a trip between kNightStart and kNightEnd" as a Pareto
 // dimension: the result keeps the fastest journey and the best one without.
-// Every boarding and alighting counts, the first and the last as well. The
-// minute of the day is delta_t % 1440, UTC (delta_t.h), not local time. CPU
-// only: the GPU engine does not call after_ride_times().
-inline constexpr int kNightStart = 0;  // [min after midnight]
+// Every boarding and alighting counts, the first and the last as well, in the
+// local time of its stop (local_clock.h). CPU only: the GPU engine does not
+// call after_ride_times().
+inline constexpr int kNightStart = 0;  // [min after local midnight]
 inline constexpr int kNightEnd = 360;
 
-CISTA_CUDA_COMPAT constexpr bool is_night(delta_t const t) {
-  auto const m = ((static_cast<int>(t) % 1440) + 1440) % 1440;
-  return m >= kNightStart && m < kNightEnd;
+CISTA_CUDA_COMPAT constexpr bool is_night(int const mam) {
+  return mam >= kNightStart && mam < kNightEnd;
 }
 
 struct night_transfer_dim : mc_dim {
@@ -218,8 +217,8 @@ struct night_transfer_dim : mc_dim {
   static constexpr bool kRideTimes = true;
 
   CISTA_CUDA_COMPAT static void after_ride_times(mc_fields& f,
-                                                 delta_t const board,
-                                                 delta_t const alight) {
+                                                 int const board,
+                                                 int const alight) {
     if (is_night(board) || is_night(alight)) {
       f.night_ = 1U;
     }
@@ -279,8 +278,8 @@ struct mc_extras {
   }
   CISTA_CUDA_COMPAT static std::uint32_t after_ride_times(
       std::uint32_t const x,
-      [[maybe_unused]] delta_t const board,
-      [[maybe_unused]] delta_t const alight) {
+      [[maybe_unused]] int const board,
+      [[maybe_unused]] int const alight) {
     auto f = fields(x);
     (Dims::after_ride_times(f, board, alight), ...);
     return bits(f);

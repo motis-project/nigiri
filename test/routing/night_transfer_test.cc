@@ -21,13 +21,14 @@ using namespace std::chrono_literals;
 
 namespace {
 
-// UTC, so the local minute of the day is the one night_transfer_dim sees.
+// Europe/Berlin, UTC+2 on this day: night is local time.
 //   N0 -> N9  23:00 -> 03:00 (alights in the night)
-//             23:00 -> 06:30 (neither boards nor alights in the night)
+//             23:00 -> 06:30 (04:30 UTC: neither boards nor alights in the
+//             local night)
 constexpr auto const kNightGTFS = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
-MTA,MOTIS Transit Authority,https://motis-project.de/,Etc/UTC
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -61,8 +62,12 @@ timetable const& night_tt() {
   return tt;
 }
 
+constexpr auto const kUtcOffset = 2h;
+
+// local time on 2024-06-19
 unixtime_t at(int const hour) {
-  return unixtime_t{sys_days{2024_y / June / 19}} + std::chrono::hours{hour};
+  return unixtime_t{sys_days{2024_y / June / 19}} + std::chrono::hours{hour} -
+         kUtcOffset;
 }
 
 // GTFS-style, hours past 24 for the next day
@@ -116,13 +121,21 @@ TEST(night_transfer, keeps_the_fastest_and_the_best_without_night) {
                         night_tt(), nullptr, ss, as, ms, make(dir), dir)
                         .journeys_))
         << "bmrapp " << (dir == direction::kForward ? "forward" : "backward");
+
+    // composed with the criteria the UI sets by default
+    using all_t = arr_non_transit_mode_switches_night_transfer_criteria;
+    auto all_ms = basic_mcraptor_state<all_t>{};
+    EXPECT_EQ(expected,
+              rows(*bmrap_profile_search<all_t>(night_tt(), nullptr, ss, as,
+                                                all_ms, make(dir), dir)
+                        .journeys_))
+        << "composed " << (dir == direction::kForward ? "forward" : "backward");
   }
 }
 
-TEST(night_transfer, is_night_is_the_utc_minute_of_the_day) {
-  EXPECT_TRUE(is_night(delta_t{0}));
-  EXPECT_TRUE(is_night(delta_t{1440 + 359}));
-  EXPECT_FALSE(is_night(delta_t{360}));
-  EXPECT_FALSE(is_night(delta_t{-1}));  // 23:59 the day before
-  EXPECT_TRUE(is_night(delta_t{-1440}));
+TEST(night_transfer, is_night) {
+  EXPECT_TRUE(is_night(0));
+  EXPECT_TRUE(is_night(359));
+  EXPECT_FALSE(is_night(360));
+  EXPECT_FALSE(is_night(1439));
 }

@@ -1041,8 +1041,22 @@ NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_mode_switches_criteria,
                           raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria,
                           raptor_state)
-NIGIRI_BMRAPP_INSTANTIATE(arr_night_transfer_criteria,
-                          raptor_state)  // CPU only
+// the night transfer criterion: CPU only
+NIGIRI_BMRAPP_INSTANTIATE(arr_night_transfer_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_night_transfer_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_night_transfer_criteria,
+                          raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_switches_night_transfer_criteria,
+                          raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_night_transfer_criteria,
+                          raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_switches_night_transfer_criteria,
+                          raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(
+    arr_avoided_modes_mode_switches_night_transfer_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria,
+    raptor_state)
 
 #if defined(NIGIRI_CUDA)
 NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, gpu::gpu_raptor_state)

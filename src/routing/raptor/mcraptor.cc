@@ -56,6 +56,7 @@ basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
       base_{base},
       allowed_claszes_{allowed_claszes},
       ctx_{ctx},
+      clock_{tt, rtt},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
       prf_idx_{prf_idx} {
@@ -64,6 +65,20 @@ basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
                   !no_compulsory_reservation,
               "mcraptor: bike/car transport, reservation filter not supported");
   reset_arrivals();
+}
+
+template <direction SearchDir, typename Criteria>
+std::pair<int, int> basic_mcraptor<SearchDir, Criteria>::local_mams(
+    std::span<stop::value_type const> const seq,
+    stop_idx_t const board,
+    stop_idx_t const alight,
+    delta_t const board_time,
+    delta_t const alight_time,
+    timezone_idx_t const trip_tz) {
+  return {
+      clock_.mam(to_unix(board_time), stop{seq[board]}.location_idx(), trip_tz),
+      clock_.mam(to_unix(alight_time), stop{seq[alight]}.location_idx(),
+                 trip_tz)};
 }
 
 template <direction SearchDir, typename Criteria>
@@ -253,15 +268,16 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
 }
 
 template <direction SearchDir, typename Criteria>
-bool basic_mcraptor<SearchDir, Criteria>::alight(unsigned const k,
-                                                 std::uint32_t const l_idx,
-                                                 stop_idx_t const stop_idx,
-                                                 delta_t const by_transport,
-                                                 delta_t const board,
-                                                 route_label const& rl,
-                                                 clasz const ride_clasz,
-                                                 std::uint32_t const transport,
-                                                 day_idx_t const day) {
+bool basic_mcraptor<SearchDir, Criteria>::alight(
+    unsigned const k,
+    std::uint32_t const l_idx,
+    stop_idx_t const stop_idx,
+    delta_t const by_transport,
+    std::pair<int, int> const local,
+    route_label const& rl,
+    clasz const ride_clasz,
+    std::uint32_t const transport,
+    day_idx_t const day) {
   auto const lb = effective_lb(l_idx);
   if (!is_better(by_transport, worst_at_dest_) || lb == kUnreachable ||
       !is_better(by_transport + dir(lb), worst_at_dest_) ||
@@ -270,7 +286,7 @@ bool basic_mcraptor<SearchDir, Criteria>::alight(unsigned const k,
     return false;
   }
   auto const ride_crit =
-      Criteria::from_ride(by_transport, board, ride_clasz, rl.carried_, ctx_);
+      Criteria::from_ride(by_transport, local, ride_clasz, rl.carried_, ctx_);
   if (!guide_feasible(l_idx, k, by_transport, ride_crit.extras_) ||
       dest_dominates(k,
                      ride_crit.projected_to(clamp(by_transport + dir(lb))))) {
@@ -423,11 +439,14 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
       },
       [&](route_label const& rl, std::uint32_t const l_idx,
           stop_idx_t const stop_idx) {
+        auto const arr = time_at_stop(r, rl.t_, stop_idx, kArrEv);
         return alight(
-            k, l_idx, stop_idx, time_at_stop(r, rl.t_, stop_idx, kArrEv),
+            k, l_idx, stop_idx, arr,
             Criteria::extras_t::kRideTimes
-                ? time_at_stop(r, rl.t_, rl.board_, kDepEv)
-                : delta_t{0},
+                ? local_mams(tt_.route_location_seq_[r], rl.board_, stop_idx,
+                             time_at_stop(r, rl.t_, rl.board_, kDepEv), arr,
+                             clock_.trip_tz(rl.t_.t_idx_))
+                : std::pair{0, 0},
             rl, tt_.route_clasz_[r], to_idx(rl.t_.t_idx_), rl.t_.day_);
       },
       [&](Criteria const& crit, std::uint32_t const parent,
@@ -484,13 +503,16 @@ bool basic_mcraptor<SearchDir, Criteria>::update_rt_transport(
       },
       [&](route_label const& rl, std::uint32_t const l_idx,
           stop_idx_t const stop_idx) {
-        return alight(k, l_idx, stop_idx,
-                      rt_time_at_stop(rt_t, stop_idx, kArrEv),
-                      Criteria::extras_t::kRideTimes
-                          ? rt_time_at_stop(rt_t, rl.board_, kDepEv)
-                          : delta_t{0},
-                      rl, rtt_->rt_transport_section_clasz_[rt_t][0],
-                      to_idx(rt_t), day_idx_t::invalid());
+        auto const arr = rt_time_at_stop(rt_t, stop_idx, kArrEv);
+        return alight(
+            k, l_idx, stop_idx, arr,
+            Criteria::extras_t::kRideTimes
+                ? local_mams(rtt_->rt_transport_location_seq_[rt_t], rl.board_,
+                             stop_idx, rt_time_at_stop(rt_t, rl.board_, kDepEv),
+                             arr, clock_.trip_tz(rt_t))
+                : std::pair{0, 0},
+            rl, rtt_->rt_transport_section_clasz_[rt_t][0], to_idx(rt_t),
+            day_idx_t::invalid());
       },
       [&](Criteria const& crit, std::uint32_t const parent,
           stop_idx_t const stop_idx, location_idx_t) {
@@ -904,6 +926,14 @@ NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_switches_criteria)
 NIGIRI_MC_INSTANTIATE(arr_avoided_modes_mode_switches_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria)
 NIGIRI_MC_INSTANTIATE(arr_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_avoided_modes_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_mode_switches_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_avoided_modes_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_switches_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_avoided_modes_mode_switches_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria)
 
 #undef NIGIRI_MC_INSTANTIATE
 

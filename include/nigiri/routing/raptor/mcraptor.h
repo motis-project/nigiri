@@ -7,6 +7,7 @@
 #include <optional>
 #include <span>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "cista/containers/bitvec.h"
@@ -19,6 +20,7 @@
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/local_clock.h"
 #include "nigiri/routing/mc_criteria.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
@@ -103,14 +105,16 @@ struct arr_with {
     return arr_no_worse<SearchDir>(arr_, o.arr_) &&
            extras_t::completed_dominates(extras_, o.extras_);
   }
-  // board: the ride's time at its boarding stop, read iff kRideTimes
+  // local: the minutes of the local day the ride boarded and alighted at,
+  // set iff kRideTimes
   static arr_with from_ride(delta_t const arr,
-                            delta_t const board,
+                            std::pair<int, int> const local,
                             clasz const c,
                             carried const prev,
                             mc_context const& ctx) {
     return {arr, static_cast<carried>(extras_t::after_ride_times(
-                     extras_t::after_ride(prev, c, ctx), board, arr))};
+                     extras_t::after_ride(prev, c, ctx), local.first,
+                     local.second))};
   }
   static arr_with at_start(delta_t const arr, std::uint16_t const ingress) {
     return {arr, static_cast<carried>(extras_t::at_start(ingress))};
@@ -144,6 +148,23 @@ using arr_avoided_modes_mode_switches_criteria =
 using arr_non_transit_avoided_modes_mode_switches_criteria =
     arr_with<non_transit_dim, avoided_modes_dim, mode_switches_dim>;
 using arr_night_transfer_criteria = arr_with<night_transfer_dim>;
+using arr_non_transit_night_transfer_criteria =
+    arr_with<non_transit_dim, night_transfer_dim>;
+using arr_avoided_modes_night_transfer_criteria =
+    arr_with<avoided_modes_dim, night_transfer_dim>;
+using arr_mode_switches_night_transfer_criteria =
+    arr_with<mode_switches_dim, night_transfer_dim>;
+using arr_non_transit_avoided_modes_night_transfer_criteria =
+    arr_with<non_transit_dim, avoided_modes_dim, night_transfer_dim>;
+using arr_non_transit_mode_switches_night_transfer_criteria =
+    arr_with<non_transit_dim, mode_switches_dim, night_transfer_dim>;
+using arr_avoided_modes_mode_switches_night_transfer_criteria =
+    arr_with<avoided_modes_dim, mode_switches_dim, night_transfer_dim>;
+using arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria =
+    arr_with<non_transit_dim,
+             avoided_modes_dim,
+             mode_switches_dim,
+             night_transfer_dim>;
 
 template <typename Criteria>
 struct basic_mcraptor_state {
@@ -398,7 +419,7 @@ private:
               std::uint32_t l_idx,
               stop_idx_t,
               delta_t by_transport,
-              delta_t board,
+              std::pair<int, int> local,
               route_label const&,
               clasz,
               std::uint32_t transport,
@@ -501,6 +522,14 @@ private:
   bool is_transport_active(transport_idx_t, day_idx_t) const;
   delta_t to_delta(day_idx_t day, std::int16_t mam) const;
   unixtime_t to_unix(delta_t) const;
+  // the ride's local boarding and alighting minutes (local_clock), iff
+  // kRideTimes
+  std::pair<int, int> local_mams(std::span<stop::value_type const> seq,
+                                 stop_idx_t board,
+                                 stop_idx_t alight,
+                                 delta_t board_time,
+                                 delta_t alight_time,
+                                 timezone_idx_t trip_tz);
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t) const;
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
@@ -525,6 +554,7 @@ private:
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
   mc_context ctx_;
+  local_clock clock_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
   profile_idx_t prf_idx_;
