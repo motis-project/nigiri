@@ -268,7 +268,9 @@ void metadata_enricher::apply(import_context& ctx, shapes_storage* shapes) {
   }
 
   auto n_agencies = 0U;
-  for (auto const& [p, sources] : by_target(providers_)) {
+  for (auto const& [p, matches] : by_target(providers_)) {
+    // Matched transports often have other operators too: best match only.
+    auto const sources = std::vector{matches.front()};
     auto& x = tt_.providers_[p];
     auto const get = [&](auto const member) {
       return [&, member](provider_idx_t const s) {
@@ -288,14 +290,12 @@ void metadata_enricher::apply(import_context& ctx, shapes_storage* shapes) {
   auto n_stops = 0U;
   auto& locations = tt_.locations_;
   for (auto const& [l, sources] : by_target(stops_)) {
-    auto filled = fill(
-        locations.wikidata_[l], sources,
-        [&](location_idx_t const s) { return locations.wikidata_[s]; }, has_id);
-    filled = add_translations(
-                 locations.names_[l], sources,
-                 [&](location_idx_t const s) { return locations.names_[s]; }) ||
-             filled;
-    n_stops += filled ? 1U : 0U;
+    if (fill(
+            locations.wikidata_[l], sources,
+            [&](location_idx_t const s) { return locations.wikidata_[s]; },
+            has_id)) {
+      ++n_stops;
+    }
   }
 
   // Routing-relevant changes: transports with the same changes get own routes.
@@ -473,9 +473,12 @@ void match_metadata_routes(
                   : std::max(at(a - 1U, b), at(a, b - 1U));
         }
       }
+      // A bare number is a weak hint: then the stops have to match both ways.
       auto const n_matched = static_cast<double>(at(n, m));
-      if (n_matched < 2.0 || (n_matched < 0.6 * static_cast<double>(n) &&
-                              n_matched < 0.7 * static_cast<double>(m))) {
+      auto const route_covered = n_matched >= 0.7 * static_cast<double>(n);
+      auto const line_covered = n_matched >= 0.7 * static_cast<double>(m);
+      if (n_matched < 2.0 || (exact ? !route_covered && !line_covered
+                                    : !route_covered || !line_covered)) {
         continue;
       }
       auto& x = matches[i].emplace_back(r, match{i, !exact, {}}).second;

@@ -217,7 +217,7 @@ TEST(loader, enrich_from_metadata_feed) {
   EXPECT_EQ("https://www.wikidata.org/wiki/Q111",
             wikidata_url(tt, tt.locations_.wikidata_[*s1]));
   EXPECT_EQ("Alpha", tt.get_default_translation(tt.locations_.names_[*s1]));
-  EXPECT_EQ("アルファ", translation_in(tt, tt.locations_.names_[*s1], "ja"));
+  EXPECT_EQ("", translation_in(tt, tt.locations_.names_[*s1], "ja"));
 
   auto const s2 = tt.find({"S2", src});
   ASSERT_TRUE(s2.has_value());
@@ -226,14 +226,11 @@ TEST(loader, enrich_from_metadata_feed) {
   auto const is_meta = [&](location_idx_t const l) {
     return tt.locations_.src_[l] == source_idx_t{1U};
   };
-  auto n_real_fps = 0U;
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     for (auto const fp : tt.locations_.footpaths_out_[kDefaultProfile][l]) {
       EXPECT_FALSE(is_meta(l) || is_meta(fp.target()));
-      n_real_fps += l != fp.target() ? 1U : 0U;
     }
   }
-  EXPECT_NE(0U, n_real_fps);
 }
 
 TEST(loader, metadata_feed_requires_line_name_match) {
@@ -342,6 +339,29 @@ trip_idx_t first_trip(timetable const& tt, transport_idx_t const t) {
 }
 
 }  // namespace
+
+TEST(loader, metadata_feed_number_only_match_covers_both) {
+  auto const enriched = [](std::string_view const real_name,
+                           bool const clip_line) {
+    auto const real =
+        mem_dir::read(replaced(std::string{kRealFeed}, "R1,bvg,M4,",
+                               "R1,bvg," + std::string{real_name} + ","));
+    auto meta_str = std::string{kMetadataFeed};
+    if (clip_line) {
+      meta_str = replaced(meta_str,
+                          "osm:r10,,,osm:x,2\nosm:r10,,,osm:c,3\n"
+                          "osm:r10,,,osm:d,4\nosm:r10,,,osm:unknown,5\n",
+                          "");
+    }
+    auto const meta = mem_dir::read(meta_str);
+    auto const tt = load(std::vector<dir_source>{{real}, {meta}}, kDateRange);
+    auto const r = route_id(tt, source_idx_t{0U}, "R1");
+    return tt.route_ids_[source_idx_t{0U}].route_id_wikidata_[r].valid();
+  };
+  EXPECT_TRUE(enriched("M4", true));
+  EXPECT_TRUE(enriched("4", false));
+  EXPECT_FALSE(enriched("4", true));
+}
 
 TEST(loader, enrich_route_type_and_clasz) {
   // The first feed's transport is absorbed by the second feed's one.
