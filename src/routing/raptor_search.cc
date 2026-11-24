@@ -147,8 +147,6 @@ routing_result raptor_search(
                        location_match_mode_str(q.start_match_mode_));
     span->SetAttribute("nigiri.query.destination_match_mode",
                        location_match_mode_str(q.dest_match_mode_));
-    span->SetAttribute("nigiri.query.use_start_footpaths",
-                       q.use_start_footpaths_);
     span->SetAttribute("nigiri.query.start_count", q.start_.size());
     span->SetAttribute("nigiri.query.destination_count", q.destination_.size());
     span->SetAttribute("nigiri.query.td_start_count", q.td_start_.size());

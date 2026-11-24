@@ -33,7 +33,6 @@ query make_alternative_query(timetable const&,
   return query{
       .start_match_mode_ = location_match_mode::kExact,
       .dest_match_mode_ = location_match_mode::kExact,
-      .use_start_footpaths_ = true,
       .start_ = {{from, 0_minutes, transport_mode_t::payload_t{0}}},
       .destination_ = {{to, 0_minutes, transport_mode_t::payload_t{0}}},
       .prf_idx_ = q.prf_idx_,
@@ -151,7 +150,6 @@ std::vector<journey> get_leg_alternatives(timetable const& tt,
                : location_idx_t::invalid());
   if (!has_prev) {
     direct_query.start_match_mode_ = q.start_match_mode_;
-    direct_query.use_start_footpaths_ = q.use_start_footpaths_;
     direct_query.start_ = q.start_;
     direct_query.td_start_ = q.td_start_;
   }

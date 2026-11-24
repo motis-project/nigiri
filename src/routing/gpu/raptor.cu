@@ -1274,8 +1274,6 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
   add_offset_leg(true);
   add_offset_leg(false);
 
-  // use_start_footpaths_ == true:
-  // reconstruct the start footpath that seeded round k=0 at the first stop.
   if (q.start_match_mode_ != location_match_mode::kIntermodal) {
     auto const search_start_l =
         is_fwd ? j.legs_.front().from_ : j.legs_.back().to_;
@@ -1285,9 +1283,9 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const direct_start_ok =
         is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
     if (!routing::is_journey_start(tt_, q, start_l) || !direct_start_ok) {
-      auto fp = lookup_footpath(
-          search_start_l, start_t, is_fwd ? event_type::kDep : event_type::kArr,
-          tt_, rtt_, q, q.start_, q.start_match_mode_, q.use_start_footpaths_);
+      auto fp = lookup_footpath(search_start_l, start_t,
+                                is_fwd ? event_type::kDep : event_type::kArr,
+                                tt_, rtt_, q, q.start_, q.start_match_mode_);
       if (fp.has_value() && is_fwd) {
         fp->arr_time_ = j.start_time_ + (fp->arr_time_ - fp->dep_time_);
         fp->dep_time_ = j.start_time_;

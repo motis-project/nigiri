@@ -303,7 +303,7 @@ inline std::optional<unixtime_t> arrival(
 }
 
 // Both search directions see the same rules. With walks at both ends of the
-// journey in both directions (use_start_footpaths_): the backward search from
+// journey in both directions: the backward search from
 // the forward query's earliest arrival leaves no earlier than the query, and
 // the forward search from that departure arrives at the same time.
 inline void expect_backward_agrees(timetable const& tt,
@@ -316,7 +316,6 @@ inline void expect_backward_agrees(timetable const& tt,
     }
     return t;
   };
-  q.use_start_footpaths_ = true;
   auto const arr = earliest_arrival(raptor_search(tt, rtt, routing::query{q}));
   ASSERT_TRUE(arr.has_value()) << "forward with start footpaths";
   auto bwd = q;

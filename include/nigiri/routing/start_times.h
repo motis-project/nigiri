@@ -34,7 +34,6 @@ void get_starts(
     std::vector<via_stop> const& via_stops,
     duration_t const max_start_offset,
     location_match_mode,
-    bool use_start_footpaths,
     std::vector<start>&,
     bool add_ontrip,
     profile_idx_t,

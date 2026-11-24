@@ -57,7 +57,7 @@ jobs:
           ./build/cuda/nigiri-benchmark -p tt.bin \
             --engines cpu gpu \
             --algo range pong \
-            --modes s2s c2c \
+            --modes s2s c2c s2c c2s \
             --dirs fwd bwd \
             -n 25
 

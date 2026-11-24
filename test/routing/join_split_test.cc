@@ -85,6 +85,8 @@ constexpr auto const kTests =
                                      {"A", "D", 2025_y / June / 18, true},
                                      {"B", "D", 2025_y / June / 18, true}};
 
+// The walk C -> C2 takes 6 minutes: after the delays, C at 00:00 only reaches
+// i+x (C1, 00:59), not k+x (C2, 00:05) with the same arrival as well.
 template <typename... Args>
 mem_dir test_files(Args... order) {
   constexpr auto const kTrips =
@@ -154,7 +156,7 @@ l,03:00:00,03:00:00,D2,1,0,0
 l,04:00:00,04:00:00,F,2,0,0
 
 # transfers.txt
-transfer_type,from_trip_id,to_trip_id
+transfer_type,from_trip_id,to_trip_id,from_stop_id,to_stop_id,min_transfer_time
 4,i,x
 4,k,x
 4,x,j
@@ -163,6 +165,7 @@ transfer_type,from_trip_id,to_trip_id
 4,k,x1
 4,x1,j
 4,x1,l
+2,,,C,C2,360
 )",
                                    kTrips[order]...));
 }

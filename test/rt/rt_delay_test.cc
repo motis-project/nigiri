@@ -115,7 +115,6 @@ TEST(rt, delay_test) {
                                           sys_days{2019_y / May / 1} + 9h},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-      .use_start_footpaths_ = true,
       .start_ = {{tt.locations_.location_id_to_idx_.at({"A", source_idx_t{0}}),
                   0_minutes, 0U}},
       .destination_ = {{tt.locations_.location_id_to_idx_.at(

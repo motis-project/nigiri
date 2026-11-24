@@ -434,7 +434,6 @@ routing::query generator::make_query() const {
   routing::query q;
   q.start_match_mode_ = s_.start_match_mode_;
   q.dest_match_mode_ = s_.dest_match_mode_;
-  q.use_start_footpaths_ = s_.use_start_footpaths_;
   q.max_transfers_ = s_.max_transfers_;
   q.min_connection_count_ = s_.min_connection_count_;
   q.extend_interval_earlier_ = s_.extend_interval_earlier_;

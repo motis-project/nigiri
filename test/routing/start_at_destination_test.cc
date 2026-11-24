@@ -70,7 +70,6 @@ TEST(routing, walk_to_destination_does_not_hide_journey) {
           .start_time_ = interval{kTen, kTen + 5min},
           .start_match_mode_ = routing::location_match_mode::kEquivalent,
           .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-          .use_start_footpaths_ = true,
           .start_ = {{loc("S"), 0min, 0U}},
           .destination_ = {{loc("D"), 0min, 0U}},
           .fastest_direct_factor_ = 10.0},
@@ -132,7 +131,6 @@ TEST(routing, origin_is_destination_has_no_round_trip) {
           .start_time_ = interval{kTen, kTen + 5min},
           .start_match_mode_ = routing::location_match_mode::kEquivalent,
           .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-          .use_start_footpaths_ = true,
           .start_ = {{loc("S"), 0min, 0U}},
           .destination_ = {{loc("S"), 0min, 0U}}},
       direction::kForward);

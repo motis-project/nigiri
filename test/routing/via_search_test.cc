@@ -1829,7 +1829,6 @@ TEST(routing, via_test_39_A_B_via_V1_V2_walks) {
       auto const results = search(
           tt, nullptr,
           routing::query{.start_time_ = times,
-                         .use_start_footpaths_ = true,
                          .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
                          .destination_ = {{loc_idx(tt, "B"), 0_minutes, 0U}},
                          .via_stops_ = vias},
@@ -1926,7 +1925,6 @@ TEST(routing, via_test_40_via_stay_later_at_search_start) {
           tt, nullptr,
           routing::query{
               .start_time_ = interval{anchor - 5_minutes, anchor + 5_minutes},
-              .use_start_footpaths_ = true,
               .start_ = {{loc_idx(tt, from), 0_minutes, 0U}},
               .destination_ = {{loc_idx(tt, to), 0_minutes, 0U}},
               .via_stops_ = {{loc_idx(tt, "S"), 10_minutes}}},
@@ -2012,7 +2010,6 @@ TEST(routing, via_footpath_stay) {
           .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
           .start_match_mode_ = routing::location_match_mode::kEquivalent,
           .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-          .use_start_footpaths_ = false,
           .start_ = {{A, 0min, 0U}},
           .destination_ = {{C, 0min, 0U}},
           .via_stops_ = {{D, 10min}}},
@@ -2109,7 +2106,6 @@ TEST(routing, via_stay_at_boarding_stop) {
           .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
           .start_match_mode_ = routing::location_match_mode::kEquivalent,
           .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-          .use_start_footpaths_ = false,
           .start_ = {{A, 0min, 0U}},
           .destination_ = {{C, 0min, 0U}},
           .via_stops_ = {{B2, 10min}}},
@@ -2194,7 +2190,6 @@ TEST(routing, DISABLED_via_stay_with_changed_transfer_stop) {
           .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 15min},
           .start_match_mode_ = routing::location_match_mode::kEquivalent,
           .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-          .use_start_footpaths_ = false,
           .start_ = {{A, 0min, 0U}},
           .destination_ = {{C, 0min, 0U}},
           .via_stops_ = {{D, 10min}}},
@@ -2273,7 +2268,6 @@ TEST(routing, via_stay_at_later_stop_of_the_station) {
                     : interval<unixtime_t>{day + 10h + 45min, day + 11h},
             .start_match_mode_ = routing::location_match_mode::kEquivalent,
             .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-            .use_start_footpaths_ = false,
             .start_ = {{dir == direction::kForward ? A : B, 0min, 0U}},
             .destination_ = {{dir == direction::kForward ? B : A, 0min, 0U}},
             .via_stops_ = {{S, 10min}}},
@@ -2346,7 +2340,6 @@ TEST(routing, via_stay_next_to_start_walk) {
       auto const results = search(
           tt, nullptr,
           routing::query{.start_time_ = interval<unixtime_t>{t, t + 1min},
-                         .use_start_footpaths_ = true,
                          .start_ = {{loc_idx(tt, from), 0min, 0U}},
                          .destination_ = {{loc_idx(tt, to), 0min, 0U}},
                          .via_stops_ = {{loc_idx(tt, "A"), 10min}}},
@@ -2368,7 +2361,6 @@ TEST(routing, pong_via_stay_at_start_before_direct_walk) {
       tt, nullptr,
       routing::query{
           .start_time_ = interval<unixtime_t>{day + 9h + 45min, day + 10h},
-          .use_start_footpaths_ = true,
           .start_ = {{loc_idx(tt, "A"), 0min, 0U}},
           .destination_ = {{loc_idx(tt, "D"), 0min, 0U}},
           .via_stops_ = {{loc_idx(tt, "A"), 10min}}},

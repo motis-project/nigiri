@@ -93,7 +93,6 @@ TEST(routing, pong_gap_truncation) {
       .start_time_ = interval<unixtime_t>{day + 10h, day + 10h + 3min},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-      .use_start_footpaths_ = false,
       .start_ = {{A, 0min, 0U}},
       .destination_ = {{B, 0min, 0U}},
       .min_connection_count_ = 2U,

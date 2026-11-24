@@ -177,7 +177,6 @@ std::vector<unixtime_t> direct_arrivals(
     std::string_view const to) {
   auto q = station_query(tt, od.first, od.second, at(from));
   q.slow_direct_ = true;
-  q.use_start_footpaths_ = true;
   auto res = pareto_set<routing::journey>{};
   routing::enrich_with_slow_direct<direction::kForward>(
       tt, &rtt, q, interval{at(from), at(to)}, res);
@@ -1167,7 +1166,6 @@ TEST(gtfsrt_transfer_rules, start_offset_of_real_time_location_honours_rule) {
 
   auto q = station_query(tt, "Z", "B", at("10:32"));
   q.start_match_mode_ = routing::location_match_mode::kExact;
-  q.use_start_footpaths_ = true;
   auto const res = raptor_search(tt, &rtt, std::move(q), direction::kForward);
   ASSERT_EQ(1U, res.size());
   EXPECT_EQ(gl_from_f(), begin(res)->dest_time_);
@@ -1189,7 +1187,6 @@ TEST(gtfsrt_transfer_rules, start_walk_to_real_time_virtual_location) {
   ASSERT_EQ(1U, rtt.n_rt_locations()) << "precondition";
 
   auto q = test::exact_query(tt, "S1", "Z", interval{at("10:00"), at("10:15")});
-  q.use_start_footpaths_ = true;
   auto const res = raptor_search(tt, &rtt, std::move(q), direction::kForward);
   ASSERT_EQ(1U, res.size());
   auto const& j = *begin(res);
@@ -1225,7 +1222,6 @@ TEST(gtfsrt_transfer_rules, start_walk_to_real_time_virtual_location_of_via) {
 
   auto q = station_query(tt, "Z", "B", interval{at("10:00"), at("10:35")});
   q.start_match_mode_ = routing::location_match_mode::kExact;
-  q.use_start_footpaths_ = true;
   q.via_stops_ = {{lidx(tt, "S4"), 10_minutes}};
   auto const res = raptor_search(tt, &rtt, std::move(q), direction::kForward);
   ASSERT_EQ(1U, res.size());
@@ -1377,7 +1373,6 @@ std::optional<unixtime_t> arrival(timetable const& tt,
       .start_ = {{resolve(tt, rtt, trip_id)[stop].get_stop().location_idx(),
                   0_minutes, 0U}},
       .destination_ = {{lidx(tt, to), 0_minutes, 0U}}};
-  q.use_start_footpaths_ = true;
   return arrival(raptor_search(tt, &rtt, std::move(q), direction::kForward));
 }
 

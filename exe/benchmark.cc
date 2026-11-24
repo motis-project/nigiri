@@ -412,9 +412,6 @@ int main(int argc, char* argv[]) {
        bpo::value<std::string>(&intermodal_dest_str)->default_value("walk"),
        "last-mile transport mode for *-coordinate --modes: "
        "walk | bicycle | car")  //
-      ("use_start_footpaths",
-       bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true),
-       "")  //
       ("max_transfers,t",
        bpo::value<std::uint32_t>(&max_transfers)->default_value(kMaxTransfers),
        "maximum number of transfers during routing")  //
@@ -621,9 +618,6 @@ int main(int argc, char* argv[]) {
       std::cerr << "invalid mode \"" << mode
                 << "\", expected s2s | s2c | c2s | c2c\n";
       return 1;
-    }
-    if (rs.start_match_mode_ == location_match_mode::kIntermodal) {
-      rs.use_start_footpaths_ = false;  // first mile is in the start offsets
     }
 
     auto& fwd_qs = mode_queries[mode];

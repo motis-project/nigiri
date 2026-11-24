@@ -73,7 +73,6 @@ TEST(routing, pong_td_egress_dominated_label) {
       .start_time_ = interval<unixtime_t>{monday + 9h, monday + 10h},
       .start_match_mode_ = routing::location_match_mode::kIntermodal,
       .dest_match_mode_ = routing::location_match_mode::kIntermodal,
-      .use_start_footpaths_ = false,
       .destination_ = {{C, 0min, 0U}},
       .td_start_ = {{A,
                      {{.valid_from_ = monday + 9h + 50min,

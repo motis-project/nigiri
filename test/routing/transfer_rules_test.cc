@@ -112,7 +112,6 @@ pareto_set<routing::journey> search_to_o(
   return raptor_search(
       tt, nullptr,
       routing::query{.start_time_ = at(hhmm),
-                     .use_start_footpaths_ = true,
                      .start_ = {{from, 0_minutes, 0U}},
                      .destination_ = {{lidx(tt, "O"), 0_minutes, 0U}},
                      .transfer_time_settings_ = tts});
@@ -238,7 +237,6 @@ TEST(transfer_rules, trip_pair_rule_walk_holds_for_its_trip) {
             interval<unixtime_t> const times, direction const dir,
             std::string_view const second_start = {}) {
           auto q = test::exact_query(tt, from, to, times);
-          q.use_start_footpaths_ = true;
           if (!second_start.empty()) {
             q.start_.push_back({lidx(tt, second_start), 0_minutes, 0U});
           }
@@ -296,7 +294,6 @@ TEST(transfer_rules, direct_trip_pair_rule_walk_holds_for_its_trip) {
                                 std::string_view const to,
                                 std::string_view const hhmm) {
     auto q = test::station_query(tt, from, to, at(hhmm));
-    q.use_start_footpaths_ = true;
     auto first = std::optional<unixtime_t>{};
     for (auto&& legs : routing::get_direct_journeys<direction::kForward>(
              tt, nullptr, q, at(hhmm))) {
@@ -460,7 +457,7 @@ TEST(transfer_rules, leg_alternatives_after_trip_at_virtual_location) {
   EXPECT_TRUE(routing::lookup_footpath(
                   arrived_at, fa.arr_time_, event_type::kArr, tt, nullptr,
                   routing::query{}, {{lidx(tt, "U"), 0_minutes, 0U}},
-                  routing::location_match_mode::kExact, true)
+                  routing::location_match_mode::kExact)
                   .has_value());
 
   auto fb_leg = j.legs_.size();

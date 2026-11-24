@@ -51,9 +51,6 @@ void query::flip_dir() {
 }
 
 query& query::sanitize(timetable const& tt) {
-  utl::verify(start_match_mode_ != location_match_mode::kIntermodal ||
-                  !use_start_footpaths_,
-              "intermodal start is incompatible with use_start_footpaths");
   if (max_travel_time_.count() < 0 || max_travel_time_ > kMaxTravelTime) {
     max_travel_time_ = kMaxTravelTime;
   }

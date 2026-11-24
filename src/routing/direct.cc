@@ -43,8 +43,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
                                             rt_timetable const* rtt,
                                             query const& q,
                                             std::vector<offset> const& offs,
-                                            location_match_mode const mode,
-                                            bool const use_footpaths) {
+                                            location_match_mode const mode) {
   auto const virt_rtt = rt_virts(rtt, q.prf_idx_);
   auto const is_boarding = ev == event_type::kDep;
   auto const td_search_dir =
@@ -81,12 +80,6 @@ std::optional<journey::leg> lookup_footpath(location_idx_t const loc,
       // A walk leaves (reaches) a start (destination) stop at the stop: the
       // walks of its virtual locations hold for the trips stopping there.
       if (l != o.target() && tt.locations_.is_virt(l)) {
-        return;
-      }
-
-      // Changing to a location of the same stop is no walk.
-      if (l != loc && !use_footpaths &&
-          rt::base(tt, rtt, l) != rt::base(tt, rtt, loc)) {
         return;
       }
 
@@ -137,8 +130,7 @@ std::optional<journey::leg> lookup_access(query const& q,
     return lookup_offset(tt, rt::base(tt, rtt, loc), t, ev, offs, td_offs);
   }
 
-  auto const use_footpaths = is_boarding ? q.use_start_footpaths_ : true;
-  return lookup_footpath(loc, t, ev, tt, rtt, q, offs, mode, use_footpaths);
+  return lookup_footpath(loc, t, ev, tt, rtt, q, offs, mode);
 }
 
 hash_set<location_idx_t> collect_locations(timetable const& tt,
@@ -150,7 +142,6 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
   auto const& offsets = is_boarding ? q.start_ : q.destination_;
   auto const& td_offsets = is_boarding ? q.td_start_ : q.td_dest_;
   auto const mode = is_boarding ? q.start_match_mode_ : q.dest_match_mode_;
-  auto const use_footpaths = is_boarding ? q.use_start_footpaths_ : true;
 
   auto locs = hash_set<location_idx_t>{};
 
@@ -172,10 +163,6 @@ hash_set<location_idx_t> collect_locations(timetable const& tt,
       for_each_meta(
           tt, virt_rtt, mode, o.target(), [&](location_idx_t const l) {
             locs.insert(l);
-            if (!use_footpaths) {
-              return;
-            }
-
             for (auto const fp : get_transfers(
                      tt, rtt, q.prf_idx_,
                      is_boarding ? direction::kForward : direction::kBackward,

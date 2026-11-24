@@ -32,8 +32,6 @@ struct generator_settings {
         << "\ndest_mode: " << match_mode_str(gs.dest_match_mode_)
         << "\nintermodal_start_mode: " << gs.start_mode_
         << "\nintermodal_dest_mode: " << gs.dest_mode_
-        << "\nuse_start_footpaths: "
-        << (gs.use_start_footpaths_ ? "true" : "false")
         << "\nmax_transfers: " << std::uint32_t{gs.max_transfers_}
         << "\nmin_connection_count: " << gs.min_connection_count_
         << "\nextend_interval_earlier: "
@@ -80,7 +78,6 @@ struct generator_settings {
   transport_mode dest_mode_{kWalk};
   std::optional<std::variant<location_idx_t, geo::latlng>> start_;
   std::optional<std::variant<location_idx_t, geo::latlng>> dest_;
-  bool use_start_footpaths_{false};
   std::uint8_t max_transfers_{routing::kMaxTransfers};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};

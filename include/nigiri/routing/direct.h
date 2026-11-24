@@ -33,8 +33,7 @@ std::optional<journey::leg> lookup_footpath(location_idx_t,
                                             rt_timetable const*,
                                             query const&,
                                             std::vector<offset> const& offs,
-                                            location_match_mode,
-                                            bool use_footpaths);
+                                            location_match_mode);
 
 template <direction Dir>
 utl::generator<std::vector<journey::leg>> get_direct_journeys(
