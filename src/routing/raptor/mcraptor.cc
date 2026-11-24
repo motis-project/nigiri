@@ -56,7 +56,6 @@ basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
       base_{base},
       allowed_claszes_{allowed_claszes},
       ctx_{ctx},
-      clock_{tt, rtt},
       is_wheelchair_{is_wheelchair},
       transfer_time_settings_{tts},
       prf_idx_{prf_idx} {
@@ -65,20 +64,6 @@ basic_mcraptor<SearchDir, Criteria>::basic_mcraptor(
                   !no_compulsory_reservation,
               "mcraptor: bike/car transport, reservation filter not supported");
   reset_arrivals();
-}
-
-template <direction SearchDir, typename Criteria>
-std::pair<int, int> basic_mcraptor<SearchDir, Criteria>::local_mams(
-    std::span<stop::value_type const> const seq,
-    stop_idx_t const board,
-    stop_idx_t const alight,
-    delta_t const board_time,
-    delta_t const alight_time,
-    timezone_idx_t const trip_tz) {
-  return {
-      clock_.mam(to_unix(board_time), stop{seq[board]}.location_idx(), trip_tz),
-      clock_.mam(to_unix(alight_time), stop{seq[alight]}.location_idx(),
-                 trip_tz)};
 }
 
 template <direction SearchDir, typename Criteria>
@@ -136,7 +121,7 @@ bool basic_mcraptor<SearchDir, Criteria>::bag_insert(
   for (auto const& e : bag) {
     if (e.round_ <= round &&
         (separate ? e.by_route_ == by_route : !by_route || e.by_route_) &&
-        e.crit_.template dominates<SearchDir>(crit)) {
+        e.crit_.template dominates<SearchDir>(crit, ctx_)) {
       return false;
     }
   }
@@ -145,7 +130,7 @@ bool basic_mcraptor<SearchDir, Criteria>::bag_insert(
     if (bag[i].round_ >= round &&
         (separate ? bag[i].by_route_ == by_route
                   : by_route || !bag[i].by_route_) &&
-        crit.template dominates<SearchDir>(bag[i].crit_)) {
+        crit.template dominates<SearchDir>(bag[i].crit_, ctx_)) {
       ++removed;
       continue;
     }
@@ -221,6 +206,14 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
                              static_cast<std::uint16_t>(dir(arr - d_start)));
     bag_insert(l, Criteria::at_start(arr, walk), state_t::kNoBreadcrumb,
                /*round=*/0U, /*by_route=*/false);
+    if constexpr (Criteria::extras_t::kByDay) {
+      for (auto t = after_night(arr, ctx_.night_offset_, kFwd);
+           is_better(clamp(t), worst_at_dest_);
+           t = after_night(t, ctx_.night_offset_, kFwd)) {
+        bag_insert(l, Criteria::at_start(clamp(t), walk),
+                   state_t::kNoBreadcrumb, /*round=*/0U, /*by_route=*/false);
+      }
+    }
   }
   seeds_.clear();
 
@@ -268,16 +261,15 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
 }
 
 template <direction SearchDir, typename Criteria>
-bool basic_mcraptor<SearchDir, Criteria>::alight(
-    unsigned const k,
-    std::uint32_t const l_idx,
-    stop_idx_t const stop_idx,
-    delta_t const by_transport,
-    std::pair<int, int> const local,
-    route_label const& rl,
-    clasz const ride_clasz,
-    std::uint32_t const transport,
-    day_idx_t const day) {
+bool basic_mcraptor<SearchDir, Criteria>::alight(unsigned const k,
+                                                 std::uint32_t const l_idx,
+                                                 stop_idx_t const stop_idx,
+                                                 delta_t const by_transport,
+                                                 delta_t const board,
+                                                 route_label const& rl,
+                                                 clasz const ride_clasz,
+                                                 std::uint32_t const transport,
+                                                 day_idx_t const day) {
   auto const lb = effective_lb(l_idx);
   if (!is_better(by_transport, worst_at_dest_) || lb == kUnreachable ||
       !is_better(by_transport + dir(lb), worst_at_dest_) ||
@@ -286,7 +278,7 @@ bool basic_mcraptor<SearchDir, Criteria>::alight(
     return false;
   }
   auto const ride_crit =
-      Criteria::from_ride(by_transport, local, ride_clasz, rl.carried_, ctx_);
+      Criteria::from_ride(by_transport, board, ride_clasz, rl.carried_, ctx_);
   if (!guide_feasible(l_idx, k, by_transport, ride_crit.extras_) ||
       dest_dominates(k,
                      ride_crit.projected_to(clamp(by_transport + dir(lb))))) {
@@ -396,31 +388,36 @@ bool basic_mcraptor<SearchDir, Criteria>::scan_stops(
   return any_marked;
 }
 
-// pareto over (trip order, carried criteria)
+// pareto over (trip order, carried criteria), by the boarding's day
 template <direction SearchDir, typename Criteria>
 void basic_mcraptor<SearchDir, Criteria>::board(
     std::uint32_t const key,
     transport const t,
     stop_idx_t const stop_idx,
     std::uint32_t const parent,
-    typename Criteria::carried const carried) {
+    typename Criteria::carried const carried,
+    int const day) {
+  using extras_t = typename Criteria::extras_t;
   for (auto& rl : route_bag_) {
     if (rl.key_ == key && rl.carried_ == carried) {
       // same trip and criteria: board closest to the exit
       rl.board_ = stop_idx;
       rl.parent_ = parent;
+      rl.day_ = day;
       return;
     }
     if (!is_earlier_trip(key, rl.key_) &&
-        Criteria::carried_dominates(rl.carried_, carried)) {
+        Criteria::carried_dominates(rl.carried_, carried) &&
+        extras_t::comparable(rl.carried_, rl.day_, carried, day)) {
       return;
     }
   }
   std::erase_if(route_bag_, [&](route_label const& rl) {
     return !is_earlier_trip(rl.key_, key) &&
-           Criteria::carried_dominates(carried, rl.carried_);
+           Criteria::carried_dominates(carried, rl.carried_) &&
+           extras_t::comparable(carried, day, rl.carried_, rl.day_);
   });
-  route_bag_.push_back({t, key, stop_idx, parent, carried});
+  route_bag_.push_back({t, key, stop_idx, parent, carried, day});
 }
 
 template <direction SearchDir, typename Criteria>
@@ -440,20 +437,21 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
       [&](route_label const& rl, std::uint32_t const l_idx,
           stop_idx_t const stop_idx) {
         auto const arr = time_at_stop(r, rl.t_, stop_idx, kArrEv);
-        return alight(
-            k, l_idx, stop_idx, arr,
-            Criteria::extras_t::kRideTimes
-                ? local_mams(tt_.route_location_seq_[r], rl.board_, stop_idx,
-                             time_at_stop(r, rl.t_, rl.board_, kDepEv), arr,
-                             clock_.trip_tz(rl.t_.t_idx_))
-                : std::pair{0, 0},
-            rl, tt_.route_clasz_[r], to_idx(rl.t_.t_idx_), rl.t_.day_);
+        return alight(k, l_idx, stop_idx, arr,
+                      Criteria::extras_t::kRideTimes
+                          ? time_at_stop(r, rl.t_, rl.board_, kDepEv)
+                          : delta_t{0},
+                      rl, tt_.route_clasz_[r], to_idx(rl.t_.t_idx_),
+                      rl.t_.day_);
       },
       [&](Criteria const& crit, std::uint32_t const parent,
           stop_idx_t const stop_idx, location_idx_t const l) {
         // skip the lookup if a boarded trip already dominates
         for (auto const& rl : route_bag_) {
           if (Criteria::carried_dominates(rl.carried_, crit.extras_) &&
+              Criteria::extras_t::comparable(
+                  rl.carried_, rl.day_, crit.extras_,
+                  Criteria::template day<SearchDir>(crit.arr_, ctx_)) &&
               is_better(time_at_stop(r, rl.t_, stop_idx, kDepEv), crit.arr_)) {
             return;
           }
@@ -461,7 +459,14 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
         auto const [day, mam] = split(crit.arr_);
         auto const et = get_earliest_transport(r, stop_idx, day, mam, l);
         if (et.is_valid()) {
-          board(trip_order_key(r, et), et, stop_idx, parent, crit.extras_);
+          auto const dep = Criteria::extras_t::kRideTimes
+                               ? time_at_stop(r, et, stop_idx, kDepEv)
+                               : delta_t{0};
+          board(trip_order_key(r, et), et, stop_idx, parent,
+                k == 1U || !Criteria::extras_t::kRideTimes
+                    ? crit.extras_
+                    : crit.boarding_at(dep, ctx_),
+                Criteria::template day<SearchDir>(dep, ctx_));
         }
       });
 }
@@ -504,21 +509,22 @@ bool basic_mcraptor<SearchDir, Criteria>::update_rt_transport(
       [&](route_label const& rl, std::uint32_t const l_idx,
           stop_idx_t const stop_idx) {
         auto const arr = rt_time_at_stop(rt_t, stop_idx, kArrEv);
-        return alight(
-            k, l_idx, stop_idx, arr,
-            Criteria::extras_t::kRideTimes
-                ? local_mams(rtt_->rt_transport_location_seq_[rt_t], rl.board_,
-                             stop_idx, rt_time_at_stop(rt_t, rl.board_, kDepEv),
-                             arr, clock_.trip_tz(rt_t))
-                : std::pair{0, 0},
-            rl, rtt_->rt_transport_section_clasz_[rt_t][0], to_idx(rt_t),
-            day_idx_t::invalid());
+        return alight(k, l_idx, stop_idx, arr,
+                      Criteria::extras_t::kRideTimes
+                          ? rt_time_at_stop(rt_t, rl.board_, kDepEv)
+                          : delta_t{0},
+                      rl, rtt_->rt_transport_section_clasz_[rt_t][0],
+                      to_idx(rt_t), day_idx_t::invalid());
       },
       [&](Criteria const& crit, std::uint32_t const parent,
           stop_idx_t const stop_idx, location_idx_t) {
-        if (is_better_or_eq(crit.arr_,
-                            rt_time_at_stop(rt_t, stop_idx, kDepEv))) {
-          board(0U, transport{}, stop_idx, parent, crit.extras_);
+        auto const dep = rt_time_at_stop(rt_t, stop_idx, kDepEv);
+        if (is_better_or_eq(crit.arr_, dep)) {
+          board(0U, transport{}, stop_idx, parent,
+                k == 1U || !Criteria::extras_t::kRideTimes
+                    ? crit.extras_
+                    : crit.boarding_at(dep, ctx_),
+                Criteria::template day<SearchDir>(dep, ctx_));
         }
       });
 }

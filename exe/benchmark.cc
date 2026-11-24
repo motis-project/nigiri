@@ -139,6 +139,9 @@ struct result_set {
 // bmrapp optimizes every criterion the device mcraptor supports as well
 using bmrapp_criteria_t =
     routing::arr_non_transit_avoided_modes_mode_switches_criteria;
+// bmrapp-night: the same and the night transfer criterion
+using bmrapp_night_criteria_t = routing::
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria;
 
 // algorithms optimizing more than (departure, arrival, transfers)
 bool is_multicriteria(std::string const& label) {
@@ -764,6 +767,7 @@ struct cpu_ws_t {
   search_state ss_;
   RS rs_;
   routing::basic_mcraptor_state<bmrapp_criteria_t> mc_;  // bmrapp's mc phases
+  routing::basic_mcraptor_state<bmrapp_night_criteria_t> mc_night_;
 };
 
 #if defined(NIGIRI_CUDA)
@@ -774,6 +778,7 @@ struct gpu_ws_t {
   search_state ss_;
   std::unique_ptr<RS> rs_;
   routing::basic_mcraptor_state<bmrapp_criteria_t> mc_;  // bmrapp's CPU mc
+  routing::basic_mcraptor_state<bmrapp_night_criteria_t> mc_night_;
 };
 #endif
 
@@ -1106,10 +1111,10 @@ int main(int argc, char* argv[]) {
 #endif
   for (auto const& a : algos) {
     if (a != "range" && a != "pong" && a != "mcraptor" && a != "mcraptor-all" &&
-        a != "mcraptor-restricted" && a != "bmrapp") {
+        a != "mcraptor-restricted" && a != "bmrapp" && a != "bmrapp-night") {
       std::cerr << "invalid algo \"" << a
                 << "\", expected range | pong | mcraptor | mcraptor-all | "
-                   "mcraptor-restricted | bmrapp\n";
+                   "mcraptor-restricted | bmrapp | bmrapp-night\n";
       return 1;
     }
   }
@@ -1191,7 +1196,8 @@ int main(int argc, char* argv[]) {
       for (auto const& algo : algos) {
         // pong and bmrapp run on the raptor state, the rest are range searches
         auto const use_pong = algo == "pong";
-        auto const use_bmrap = algo == "bmrapp";
+        auto const night = algo == "bmrapp-night";
+        auto const use_bmrap = algo == "bmrapp" || night;
         auto const use_restricted = algo == "mcraptor-restricted";
         auto const algo_part = use_pong || use_bmrap ? std::string{"range"}
                                : use_restricted ? std::string{"mcraptor-all"}
@@ -1204,6 +1210,12 @@ int main(int argc, char* argv[]) {
               qs, label + "-cpu", threads_v,
               [&](cpu_ws_t<RS>& w, routing::query q) {
                 if constexpr (std::is_same_v<RS, routing::raptor_state>) {
+                  if (night) {
+                    return routing::bmrap_profile_search<
+                        bmrapp_night_criteria_t>(tt, nullptr, w.ss_, w.rs_,
+                                                 w.mc_night_, std::move(q),
+                                                 dir);
+                  }
                   return use_bmrap
                              ? routing::bmrap_profile_search<bmrapp_criteria_t>(
                                    tt, nullptr, w.ss_, w.rs_, w.mc_,
@@ -1243,6 +1255,12 @@ int main(int argc, char* argv[]) {
               [&](gpu_ws_t<RS>& w, routing::query q) {
                 if constexpr (std::is_same_v<RS,
                                              routing::gpu::gpu_raptor_state>) {
+                  if (night) {
+                    return routing::bmrap_profile_search<
+                        bmrapp_night_criteria_t>(tt, nullptr, w.ss_, *w.rs_,
+                                                 w.mc_night_, std::move(q), dir,
+                                                 std::nullopt, gpu_mc);
+                  }
                   return use_bmrap
                              ? routing::bmrap_profile_search<bmrapp_criteria_t>(
                                    tt, nullptr, w.ss_, *w.rs_, w.mc_,
@@ -1292,7 +1310,7 @@ int main(int argc, char* argv[]) {
                       .template operator()<routing::gpu::gpu_raptor_state>(
                           "gpu.mc" + std::to_string(m != 0 ? 1 : 0), m != 0));
             }
-          } else if (run_gpu && !use_restricted) {  // a cpu reference
+          } else if (run_gpu && !use_restricted && !use_bmrap) {
             cells.push_back(
                 algo_part == "mcraptor"
                     ? run_gpu_cell.template
@@ -1305,6 +1323,22 @@ int main(int argc, char* argv[]) {
                       operator()<routing::gpu::gpu_raptor_state>());
           }
 #endif
+          if (night) {
+            for (auto const& c : cells) {
+              if (c.label_.starts_with(label + "-")) {
+                auto n = 0U, with = 0U;
+                for (auto const& js : c.res_) {
+                  for (auto const& j : js) {
+                    ++n;
+                    with += j.criteria_night_transfer_ ? 1U : 0U;
+                  }
+                }
+                summary.push_back(
+                    fmt::format("{:<36} journeys={} night={} without={}",
+                                c.label_, n, with, n - with));
+              }
+            }
+          }
         } catch (std::exception const& e) {
           // e.g. GPU state allocation OOM -- report + fail instead of dying
           std::cerr << "RUN " << label << " failed: " << e.what() << "\n";

@@ -1762,7 +1762,7 @@ void load_timetable(loader_config const& config,
         gtfs::route_key_ptr_t{c, &s.stop_seq_, flags_seq_ptr_cache});
     if (it != end(route_services)) {
       for (auto& route : it->second) {
-        auto const idx = get_index(route, s);
+        auto const idx = get_index(route, s, c);
         if (idx.has_value()) {
           route.insert(std::next(begin(route), static_cast<int>(*idx)), s);
           return;

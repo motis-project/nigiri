@@ -20,7 +20,6 @@
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
-#include "nigiri/routing/local_clock.h"
 #include "nigiri/routing/mc_criteria.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
@@ -95,26 +94,40 @@ struct arr_with {
   static bool carried_dominates(carried const a, carried const b) {
     return extras_t::dominates(a, b);
   }
+  // on a stop (the destination: completed_dominates())
   template <direction SearchDir>
-  bool dominates(arr_with const& o) const {
+  bool dominates(arr_with const& o, mc_context const& ctx) const {
     return arr_no_worse<SearchDir>(arr_, o.arr_) &&
-           extras_t::dominates(extras_, o.extras_);
+           extras_t::dominates(extras_, o.extras_) &&
+           extras_t::comparable(extras_, day<SearchDir>(arr_, ctx), o.extras_,
+                                day<SearchDir>(o.arr_, ctx));
+  }
+  // night_day() as far as the extras compare by it
+  template <direction SearchDir>
+  static int day(delta_t const t, mc_context const& ctx) {
+    if constexpr (extras_t::kByDay) {
+      return night_day(t, ctx.night_offset_, SearchDir == direction::kForward);
+    } else {
+      return 0;
+    }
   }
   template <direction SearchDir>
   bool completed_dominates(arr_with const& o) const {
     return arr_no_worse<SearchDir>(arr_, o.arr_) &&
            extras_t::completed_dominates(extras_, o.extras_);
   }
-  // local: the minutes of the local day the ride boarded and alighted at,
-  // set iff kRideTimes
+  // board: the ride's time at its boarding stop, read iff kRideTimes
   static arr_with from_ride(delta_t const arr,
-                            std::pair<int, int> const local,
+                            delta_t const board,
                             clasz const c,
                             carried const prev,
                             mc_context const& ctx) {
     return {arr, static_cast<carried>(extras_t::after_ride_times(
-                     extras_t::after_ride(prev, c, ctx), local.first,
-                     local.second))};
+                     extras_t::after_ride(prev, c, ctx), c, board, arr, ctx))};
+  }
+  // what boarding at dep carries, waiting there from arr_ (not at the start)
+  carried boarding_at(delta_t const dep, mc_context const& ctx) const {
+    return static_cast<carried>(extras_t::after_wait(extras_, arr_, dep, ctx));
   }
   static arr_with at_start(delta_t const arr, std::uint16_t const ingress) {
     return {arr, static_cast<carried>(extras_t::at_start(ingress))};
@@ -379,6 +392,7 @@ private:
     stop_idx_t board_;
     std::uint32_t parent_;
     typename Criteria::carried carried_;
+    int day_;  // Criteria::day() of the boarding
   };
 
   date::sys_days base() const;
@@ -399,7 +413,8 @@ private:
              transport,
              stop_idx_t,
              std::uint32_t parent,
-             typename Criteria::carried);
+             typename Criteria::carried,
+             int day);
   void update_footpaths(unsigned k);
   void collect_dest_journeys(unsigned k,
                              unixtime_t start_time,
@@ -419,7 +434,7 @@ private:
               std::uint32_t l_idx,
               stop_idx_t,
               delta_t by_transport,
-              std::pair<int, int> local,
+              delta_t board,
               route_label const&,
               clasz,
               std::uint32_t transport,
@@ -522,14 +537,6 @@ private:
   bool is_transport_active(transport_idx_t, day_idx_t) const;
   delta_t to_delta(day_idx_t day, std::int16_t mam) const;
   unixtime_t to_unix(delta_t) const;
-  // the ride's local boarding and alighting minutes (local_clock), iff
-  // kRideTimes
-  std::pair<int, int> local_mams(std::span<stop::value_type const> seq,
-                                 stop_idx_t board,
-                                 stop_idx_t alight,
-                                 delta_t board_time,
-                                 delta_t alight_time,
-                                 timezone_idx_t trip_tz);
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t) const;
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
@@ -554,7 +561,6 @@ private:
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
   mc_context ctx_;
-  local_clock clock_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
   profile_idx_t prf_idx_;

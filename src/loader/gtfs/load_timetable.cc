@@ -246,7 +246,7 @@ void load_timetable(loader_config const& config,
         route_key_ptr_t{clasz, stop_seq, flags_seq_ptr_cache});
     if (it != end(route_services)) {
       for (auto& r : it->second) {
-        auto const idx = get_index(r, s);
+        auto const idx = get_index(r, s, clasz);
         if (idx.has_value()) {
           r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
           return;

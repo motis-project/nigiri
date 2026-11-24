@@ -26,6 +26,9 @@ constexpr std::uint32_t n_bitvec_words(std::uint32_t const n) {
   return n / 32U + 1U;
 }
 
+// mcraptor's route bags pack the boarding stop into 13 bits
+constexpr auto kMaxRouteStops = 1U << 13U;
+
 struct gpu_timetable::impl {
   using t = timetable;
   using fp_t = decltype(t{}.locations_.footpaths_out_[0]);
@@ -34,8 +37,9 @@ struct gpu_timetable::impl {
       timetable const& tt) {
     auto v = std::vector<std::uint32_t>(tt.n_routes() + 1U);
     for (auto r = 0U; r < tt.n_routes(); ++r) {
-      v[r + 1U] = v[r] + static_cast<std::uint32_t>(
-                             tt.route_location_seq_[route_idx_t{r}].size());
+      auto const n = tt.route_location_seq_[route_idx_t{r}].size();
+      utl::verify(n <= kMaxRouteStops, "gpu: route {} has {} stops", r, n);
+      v[r + 1U] = v[r] + static_cast<std::uint32_t>(n);
     }
     return v;
   }
@@ -265,6 +269,12 @@ struct gpu_rt_timetable::impl {
               build_rt_virt_seq(rtt)};
     }
 
+    for (auto rt_t = 0U; rt_t != rtt.n_rt_transports(); ++rt_t) {
+      auto const n =
+          rtt.rt_transport_location_seq_[rt_transport_idx_t{rt_t}].size();
+      utl::verify(n <= kMaxRouteStops, "gpu: rt transport {} has {} stops",
+                  rt_t, n);
+    }
     utl::verify(
         bc_transport_space_fits(tt.transport_route_.size(), n_rt_transports_),
         "transport idx space too small: {} static + {} rt",

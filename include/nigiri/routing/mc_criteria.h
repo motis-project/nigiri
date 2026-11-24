@@ -18,15 +18,20 @@
 // A criterion owns fields of mc_fields, the label's 16 bits. Derived from
 // mc_dim (no-op updates, kRide false), it defines what applies of
 //   kRide                    whether a ride changes its fields
-//   kRideTimes               whether it needs the ride's local times (CPU)
+//   kRideTimes               whether it needs the ride's times
 //   at_start(f, minutes)     a start label (minutes walked to it)
 //   after_ride(f, c, ctx)    after riding a trip of class c
-//   after_ride_times(f, board, alight)  after a ride, boarded and alighted at
-//                            these minutes of the local day
+//   after_wait(f, from, to, ctx)  after waiting at a stop to board, not at the
+//                            start
+//   after_ride_times(f, c, board, alight, ctx)  after a ride of class c boarded
+//                            and alighted then
 //   after_walk(f, minutes)   after a walk (offset, footpath)
 //   complete(f)              drops what only counts while the journey goes on
 //   dominates(a, b)          a is no worse than b; on complete() fields, also
 //                            once nothing follows
+//   kByDay, comparable(a, b, same_day)  whether a label a may dominate one b
+//                            (else not) where both are on a stop or a trip,
+//                            given whether they are on the same night_day()
 //   join(prefix, suffix, out)  out: the complete fields of both halves
 //   to_journey(f, j), of_journey(j, f)  the journey's field (complete fields)
 // A new criterion also needs its fields here, aliases (raptor/mcraptor.h,
@@ -54,11 +59,20 @@ CISTA_CUDA_COMPAT constexpr std::uint16_t saturate(std::uint32_t const v,
 struct mc_dim {
   static constexpr bool kRide = false;
   static constexpr bool kRideTimes = false;
+  static constexpr bool kByDay = false;
+  CISTA_CUDA_COMPAT static bool comparable(mc_fields, mc_fields, bool) {
+    return true;
+  }
   CISTA_CUDA_COMPAT static void at_start(mc_fields&, std::uint32_t) {}
   CISTA_CUDA_COMPAT static void after_ride(mc_fields&,
                                            clasz,
                                            mc_context const&) {}
-  CISTA_CUDA_COMPAT static void after_ride_times(mc_fields&, int, int) {}
+  CISTA_CUDA_COMPAT static void after_wait(mc_fields&,
+                                           delta_t,
+                                           delta_t,
+                                           mc_context const&) {}
+  CISTA_CUDA_COMPAT static void after_ride_times(
+      mc_fields&, clasz, delta_t, delta_t, mc_context const&) {}
   CISTA_CUDA_COMPAT static void after_walk(mc_fields&, std::uint32_t) {}
   CISTA_CUDA_COMPAT static void complete(mc_fields&) {}
 };
@@ -200,26 +214,43 @@ struct mode_switches_dim : mc_dim {
 };
 
 // ---- night transfer ---------------------------------------------------------
-// "Boards or alights a trip between kNightStart and kNightEnd" as a Pareto
-// dimension: the result keeps the fastest journey and the best one without.
-// Every boarding and alighting counts, the first and the last as well, in the
-// local time of its stop (local_clock.h). CPU only: the GPU engine does not
-// call after_ride_times().
-inline constexpr int kNightStart = 0;  // [min after local midnight]
-inline constexpr int kNightEnd = 360;
-
-CISTA_CUDA_COMPAT constexpr bool is_night(int const mam) {
-  return mam >= kNightStart && mam < kNightEnd;
-}
-
+// "Awake at night" as a Pareto dimension: the result keeps the fastest journey
+// and the best one without. The night is kNightStart to kNightEnd in the
+// query's local time (mc_context.h). Waits to board and rides meeting it count,
+// but a sleeper's ride (is_sleeper_clasz) only by its ends: one through the
+// night is sleep. A ride shorter than the night judges the same either way,
+// and a longer one has its own route (loader/get_index.h), so the rule keeps
+// the trips of a route in order. Walks count by the wait that follows; the
+// start's wait does not count, the walk to the destination not at all.
+// Without the night, a label is stuck in its day (night_day()): it is better
+// than a later one only on the same day, on a stop as on a trip (by the day
+// it boarded).
 struct night_transfer_dim : mc_dim {
   static constexpr bool kRide = true;
   static constexpr bool kRideTimes = true;
+  static constexpr bool kByDay = true;
 
+  CISTA_CUDA_COMPAT static bool comparable(mc_fields,
+                                           mc_fields const b,
+                                           bool const same_day) {
+    return b.night_ != 0U || same_day;
+  }
+  CISTA_CUDA_COMPAT static void after_wait(mc_fields& f,
+                                           delta_t const from,
+                                           delta_t const to,
+                                           mc_context const& ctx) {
+    if (meets_night(from, to, ctx.night_offset_)) {
+      f.night_ = 1U;
+    }
+  }
   CISTA_CUDA_COMPAT static void after_ride_times(mc_fields& f,
-                                                 int const board,
-                                                 int const alight) {
-    if (is_night(board) || is_night(alight)) {
+                                                 clasz const c,
+                                                 delta_t const board,
+                                                 delta_t const alight,
+                                                 mc_context const& ctx) {
+    auto const o = ctx.night_offset_;
+    if (is_sleeper_clasz(c) ? is_night(board, o) || is_night(alight, o)
+                            : meets_night(board, alight, o)) {
       f.night_ = 1U;
     }
   }
@@ -249,6 +280,7 @@ struct mc_extras {
   static constexpr bool kAny = sizeof...(Dims) != 0U;
   static constexpr bool kRide = (... || Dims::kRide);
   static constexpr bool kRideTimes = (... || Dims::kRideTimes);
+  static constexpr bool kByDay = (... || Dims::kByDay);
 
   CISTA_CUDA_COMPAT static mc_fields fields(std::uint32_t const x) {
     return std::bit_cast<mc_fields>(static_cast<std::uint16_t>(x));
@@ -276,12 +308,23 @@ struct mc_extras {
     (Dims::after_ride(f, c, ctx), ...);
     return bits(f);
   }
+  CISTA_CUDA_COMPAT static std::uint32_t after_wait(
+      std::uint32_t const x,
+      [[maybe_unused]] delta_t const from,
+      [[maybe_unused]] delta_t const to,
+      [[maybe_unused]] mc_context const& ctx) {
+    auto f = fields(x);
+    (Dims::after_wait(f, from, to, ctx), ...);
+    return bits(f);
+  }
   CISTA_CUDA_COMPAT static std::uint32_t after_ride_times(
       std::uint32_t const x,
-      [[maybe_unused]] int const board,
-      [[maybe_unused]] int const alight) {
+      [[maybe_unused]] clasz const c,
+      [[maybe_unused]] delta_t const board,
+      [[maybe_unused]] delta_t const alight,
+      [[maybe_unused]] mc_context const& ctx) {
     auto f = fields(x);
-    (Dims::after_ride_times(f, board, alight), ...);
+    (Dims::after_ride_times(f, c, board, alight, ctx), ...);
     return bits(f);
   }
   CISTA_CUDA_COMPAT static std::uint32_t after_walk(
@@ -295,6 +338,15 @@ struct mc_extras {
     [[maybe_unused]] auto const fa = fields(a);
     [[maybe_unused]] auto const fb = fields(b);
     return (... && Dims::dominates(fa, fb));
+  }
+  // a on night_day() day_a may dominate b on day_b (any day if !kByDay)
+  CISTA_CUDA_COMPAT static bool comparable(std::uint32_t const a,
+                                           [[maybe_unused]] int const day_a,
+                                           std::uint32_t const b,
+                                           [[maybe_unused]] int const day_b) {
+    [[maybe_unused]] auto const fa = fields(a);
+    [[maybe_unused]] auto const fb = fields(b);
+    return (... && Dims::comparable(fa, fb, day_a == day_b));
   }
   CISTA_CUDA_COMPAT static bool completed_dominates(std::uint32_t const a,
                                                     std::uint32_t const b) {

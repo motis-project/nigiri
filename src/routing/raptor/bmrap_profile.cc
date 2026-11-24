@@ -142,7 +142,8 @@ Algo make_engine(
               q.no_compulsory_reservation_,
               q.transfer_time_settings_,
               q.prf_idx_,
-              mc_context{.avoided_ = q.avoided_claszes_}};
+              mc_context{.avoided_ = q.avoided_claszes_,
+                         .night_offset_ = night_offset(tt, q)}};
 }
 
 // the next start time of `algo`: q's starts at t (q flipped for the pongs)
@@ -1041,7 +1042,6 @@ NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_mode_switches_criteria,
                           raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria,
                           raptor_state)
-// the night transfer criterion: CPU only
 NIGIRI_BMRAPP_INSTANTIATE(arr_night_transfer_criteria, raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_night_transfer_criteria, raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_night_transfer_criteria,
@@ -1071,6 +1071,23 @@ NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_mode_switches_criteria,
                           gpu::gpu_raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria,
                           gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_night_transfer_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_switches_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_switches_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(
+    arr_avoided_modes_mode_switches_night_transfer_criteria,
+    gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria,
+    gpu::gpu_raptor_state)
 #endif
 
 #undef NIGIRI_BMRAPP_INSTANTIATE
