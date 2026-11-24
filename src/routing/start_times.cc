@@ -313,8 +313,6 @@ void get_starts(
       update(l, o.duration(), false);
     });
   }
-  // A stop walks to the stops around it. Intermodal offsets already lead to
-  // every stop the first mile reaches.
   if (mode != location_match_mode::kIntermodal) {
     for (auto const& o : start_offsets) {
       for_each_meta(

@@ -1274,8 +1274,6 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
   add_offset_leg(true);
   add_offset_leg(false);
 
-  // The start footpath that seeded round k=0 at the first stop.
-  // cf. CPU find_start_footpath
   if (q.start_match_mode_ != location_match_mode::kIntermodal) {
     auto const search_start_l =
         is_fwd ? j.legs_.front().from_ : j.legs_.back().to_;
