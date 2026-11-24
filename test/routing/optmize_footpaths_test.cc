@@ -376,3 +376,126 @@ TEST(routing, optimize_transfers_keeps_station_bonus_of_same_stop_change) {
   ASSERT_EQ(1U, res.size());
   EXPECT_EQ(loc_idx(tt, "X"), begin(res)->legs_.front().to_);
 }
+
+// T0 and T1 run in opposite directions K -> D -> L and L -> D -> K. The change
+// D1 -> D2 is the shorter walk, but it passes K twice: change at K.
+TEST(routing, optimize_transfers_no_double_visit_opposite_directions) {
+  auto const tt = test::load_feeds_with_walks(
+      {test::feed(
+          {{"W", 50.0, 6.0},
+           {"K1", 50.1, 6.0},
+           {"K2", 50.10045, 6.0},  // 50m
+           {"D1", 50.2, 6.0},
+           {"D2", 50.2001, 6.0},
+           {"L", 50.3, 6.0},
+           {"Z", 50.4, 6.0}},
+          {{"T0",
+            "R0",
+            {{"W", "10:00"}, {"K1", "10:02"}, {"D1", "10:03"}, {"L", "10:25"}}},
+           {"T1",
+            "R1",
+            {{"L", "10:00"},
+             {"D2", "10:08"},
+             {"K2", "10:09"},
+             {"Z", "10:20"}}}},
+          "")},
+      {{"K1", "K2", 3}, {"D1", "D2", 1}});
+  auto const res = test::search_at(tt, "W", "Z", "10:00");
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(loc_idx(tt, "K1"), begin(res)->legs_.front().to_);
+}
+
+// The stops of a big station O and a small station K.
+std::vector<test::stop_def> big_and_small_station() {
+  return {{"R", 50.0, 6.0},
+          {"K", 50.1, 6.0},
+          {"O", 50.2, 6.0},
+          {"H", 50.3, 6.0},
+          {"Y", 50.4, 6.0}};
+}
+
+std::vector<test::trip_def> big_station_trips() {
+  return {{"X0", "RX", {{"O", "08:00"}, {"Y", "08:30"}}},
+          {"X1", "RX", {{"O", "08:10"}, {"Y", "08:40"}}},
+          {"X2", "RX", {{"O", "08:20"}, {"Y", "08:50"}}}};
+}
+
+// T0 runs R -> K -> O, T1 back O -> K -> H: change at K, not at the bigger O.
+TEST(routing, optimize_transfers_no_double_visit_for_bigger_station) {
+  auto trips = big_station_trips();
+  trips.push_back(
+      {"T0", "R0", {{"R", "10:00"}, {"K", "10:30"}, {"O", "11:00"}}});
+  trips.push_back(
+      {"T1", "R1", {{"O", "12:00"}, {"K", "12:30"}, {"H", "13:00"}}});
+  auto const tt =
+      test::load_feeds({test::feed(big_and_small_station(), trips, "")});
+  auto const res = test::search_at(tt, "R", "H", "10:00");
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(loc_idx(tt, "K"), begin(res)->legs_.front().to_);
+}
+
+// T0 and T1 both run K -> O: the bigger station O is still preferred.
+TEST(routing, optimize_transfers_same_direction_prefers_bigger_station) {
+  auto trips = big_station_trips();
+  trips.push_back(
+      {"T0", "R0", {{"R", "10:00"}, {"K", "10:30"}, {"O", "11:00"}}});
+  trips.push_back(
+      {"T1", "R1", {{"K", "10:40"}, {"O", "11:10"}, {"H", "11:40"}}});
+  auto const tt =
+      test::load_feeds({test::feed(big_and_small_station(), trips, "")});
+  auto const res = test::search_at(tt, "R", "H", "10:00");
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(loc_idx(tt, "O"), begin(res)->legs_.front().to_);
+}
+
+// T1 loops S1 -> L -> S2 through station S. Boarding at S1 is the shorter
+// change, but T1 then passes S again: board at S2.
+TEST(routing, optimize_transfers_no_double_visit_loop) {
+  auto const tt = test::load_feeds_with_walks(
+      {test::feed({{"R", 50.0, 6.0},
+                   {"S", 50.1, 6.0, "", true},
+                   {"S1", 50.1001, 6.0, "S"},
+                   {"S2", 50.1002, 6.0, "S"},
+                   {"L", 50.2, 6.0},
+                   {"Z", 50.3, 6.0}},
+                  {{"T0", "R0", {{"R", "10:00"}, {"S1", "10:10"}}},
+                   {"T1",
+                    "R1",
+                    {{"S1", "10:30"},
+                     {"L", "10:35"},
+                     {"S2", "10:40"},
+                     {"Z", "10:50"}}}},
+                  "")},
+      {{"S1", "S2", 3}});
+  auto const res = test::search_at(tt, "R", "Z", "10:00");
+  ASSERT_EQ(1U, res.size());
+  EXPECT_EQ(loc_idx(tt, "S2"), begin(res)->legs_.back().from_);
+}
+
+// T1 loops H -> B -> K2 -> S. The change T1 -> T2 moves from B to S, so T1
+// passes station K again where T0 was left: board T1 at K2 instead of H.
+TEST(routing, optimize_transfers_no_double_visit_over_two_changes) {
+  auto const tt = test::load_feeds_with_walks(
+      {test::feed(
+          {{"A", 50.0, 6.0},
+           {"K", 50.1, 6.0, "", true},
+           {"K1", 50.1001, 6.0, "K"},
+           {"K2", 50.1002, 6.0, "K"},
+           {"H", 50.2, 6.0},
+           {"B", 50.3, 6.0},
+           {"S", 50.4, 6.0},
+           {"Z", 50.5, 6.0}},
+          {{"T0", "R0", {{"A", "04:30"}, {"K1", "04:59"}}},
+           {"T1",
+            "R1",
+            {{"H", "05:14"}, {"B", "05:15"}, {"K2", "05:17"}, {"S", "05:20"}}},
+           {"T2", "R2", {{"S", "05:39"}, {"Z", "05:58"}}}},
+          "")},
+      {{"K1", "K2", 4}, {"K1", "H", 9}, {"B", "S", 3}});
+  auto const res = test::search_at(tt, "A", "Z", "04:30");
+  ASSERT_EQ(1U, res.size());
+  auto const& legs = begin(res)->legs_;
+  ASSERT_EQ(5U, legs.size());
+  EXPECT_EQ(loc_idx(tt, "K2"), legs[2].from_);
+  EXPECT_EQ(loc_idx(tt, "S"), legs[2].to_);
+}
