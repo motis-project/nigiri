@@ -264,7 +264,6 @@ void get_starts(
     std::vector<via_stop> const& via_stops,
     duration_t const max_start_offset,
     location_match_mode const mode,
-    bool const use_start_footpaths,
     std::vector<start>& starts,
     bool const add_ontrip,
     profile_idx_t const prf_idx,
@@ -314,7 +313,9 @@ void get_starts(
       update(l, o.duration(), false);
     });
   }
-  if (use_start_footpaths) {
+  // A stop walks to the stops around it. Intermodal offsets already lead to
+  // every stop the first mile reaches.
+  if (mode != location_match_mode::kIntermodal) {
     for (auto const& o : start_offsets) {
       for_each_meta(
           tt, virt_rtt, mode, o.target(), [&](location_idx_t const l) {

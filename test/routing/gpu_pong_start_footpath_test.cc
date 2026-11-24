@@ -1,34 +1,19 @@
 #include "gtest/gtest.h"
 
-#include <sstream>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include "fmt/format.h"
-
-#include "nigiri/loader/dir.h"
 #include "nigiri/loader/load.h"
-#include "nigiri/routing/raptor/pong.h"
-#include "nigiri/routing/raptor/raptor_state.h"
-#include "nigiri/routing/raptor_search.h"
-#include "nigiri/routing/search.h"
-#include "nigiri/rt/create_rt_timetable.h"
-#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
-#if defined(NIGIRI_CUDA)
-#include "nigiri/routing/gpu/raptor.h"
-#endif
+#include "../raptor_search.h"
 
 using namespace date;
 using namespace nigiri;
 using namespace std::chrono_literals;
+using namespace std::string_view_literals;
+using nigiri::test::raptor_search;
 
 namespace {
 
-// X <-> P: 20 minute walks (transfers.txt). T: P 10:30 -> Q 10:40,
-// T2: Q 11:00 -> P 11:10.
+// X <-> P: 20 minute walks. T: P 10:30 -> Q 10:40, T2: Q 11:00 -> P 11:10.
 constexpr auto kFeed = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -65,144 +50,58 @@ stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_stat
 X,X,,,,,,
 P,P,,,,,,
 Q,Q,,,,,,
-)";
+)"sv;
 
-std::string print(timetable const& tt,
-                  rt_timetable const* rtt,
-                  pareto_set<routing::journey> const& js) {
-  auto ss = std::stringstream{};
-  for (auto const& j : js) {
-    j.print(ss, tt, rtt);
-  }
-  return ss.str();
-}
+constexpr auto kFwdJourney = R"(
+[2019-05-03 11:00, 2019-05-03 11:30]
+TRANSFERS: 0
+     FROM: (Q, Q) [2019-05-03 11:00]
+       TO: (X, X) [2019-05-03 11:30]
+leg 0: (Q, Q) [2019-05-03 11:00] -> (P, P) [2019-05-03 11:10]
+   0: Q       Q...............................................                               d: 03.05 11:00 [03.05 11:00]  [{name=R2, day=2019-05-03, id=T2, src=0}]
+   1: P       P............................................... a: 03.05 11:10 [03.05 11:10]
+leg 1: (P, P) [2019-05-03 11:10] -> (X, X) [2019-05-03 11:30]
+  FOOTPATH (duration=20)
 
-enum class expect { kNone, kWalk, kOffsetOnly };
 
-struct side {
-  char const* stop_;
-  bool intermodal_;  // a 5 minute offset to the stop, else the stop itself
-};
+)"sv;
 
-struct test_case {
-  side from_, to_;  // in travel order
-  bool start_fps_;  // use_start_footpaths_ at the search start
-  direction dir_;  // kBackward: arriveBy, the search starts at to_
-  expect expect_;
-};
+constexpr auto kBwdJourney = R"(
+[2019-05-03 10:10, 2019-05-03 10:40]
+TRANSFERS: 0
+     FROM: (X, X) [2019-05-03 10:10]
+       TO: (Q, Q) [2019-05-03 10:40]
+leg 0: (X, X) [2019-05-03 10:10] -> (P, P) [2019-05-03 10:30]
+  FOOTPATH (duration=20)
+leg 1: (P, P) [2019-05-03 10:30] -> (Q, Q) [2019-05-03 10:40]
+   0: P       P...............................................                               d: 03.05 10:30 [03.05 10:30]  [{name=R, day=2019-05-03, id=T, src=0}]
+   1: Q       Q............................................... a: 03.05 10:40 [03.05 10:40]
+
+
+)"sv;
 
 }  // namespace
 
-// pong's reverse search starts at the other end of the query, where it walks
-// unless intermodal (get_starts), whatever use_start_footpaths_ says:
-// flip_dir() leaves the flag as it was. The GPU reconstruct has to find those
-// walks too - for arriveBy queries the first one, for departure queries the
-// last one, and with an intermodal start (which forces the flag off) also for
-// departure queries that asked for start footpaths.
-TEST(gpu_pong, walks_at_search_ends) {
+// The walk is at the search end, where pong's reverse search starts: its
+// reconstruction has to find the start walk of the reverse search.
+// raptor_search compares CPU and GPU pong for interval queries.
+TEST(routing, pong_walk_at_search_end) {
   auto const tt = loader::load(loader::mem_dir::read(kFeed),
                                {2019_y / May / 2, 2019_y / May / 4});
-  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 3});
-  auto const loc = [&](char const* id) {
-    return tt.locations_.location_id_to_idx_.at({id, source_idx_t{0}});
-  };
   auto const day = unixtime_t{sys_days{2019_y / May / 3}};
 
-  using enum expect;
-  constexpr auto kFwd = direction::kForward;
-  constexpr auto kBwd = direction::kBackward;
-  auto const X = side{"X", false}, Q = side{"Q", false};
-  auto const X_ = side{"X", true}, P_ = side{"P", true}, Q_ = side{"Q", true};
-  auto const cases = std::vector<test_case>{
-      // walk X -> P before T
-      {X, Q, false, kFwd, kNone},  // no walk at the search start
-      {X, Q, true, kFwd, kWalk},
-      {X, Q, false, kBwd, kWalk},  // the walk is at the search end
-      {X, Q, true, kBwd, kWalk},
-      {X, Q_, false, kFwd, kNone},
-      {X, Q_, true, kFwd, kWalk},
-      {X, Q_, false, kBwd, kWalk},  // intermodal search start: flag off
-      {X_, Q, false, kFwd, kNone},  // the offset is the whole first mile
-      {X_, Q, false, kBwd, kNone},
-      {P_, Q, false, kFwd, kOffsetOnly},
-      {P_, Q, false, kBwd, kOffsetOnly},
-      // walk P -> X after T2
-      {Q, X, false, kFwd, kWalk},  // the walk is at the search end
-      {Q, X, true, kFwd, kWalk},
-      {Q, X, false, kBwd, kNone},  // no walk at the search start
-      {Q, X, true, kBwd, kWalk},
-      {Q_, X, false, kFwd, kWalk},  // intermodal search start: flag off
-      {Q_, X, false, kBwd, kNone},
-      {Q_, X, true, kBwd, kWalk},
-      {Q, X_, false, kFwd, kNone},  // the offset is the whole last mile
-      {Q, X_, false, kBwd, kNone},
-      {Q, P_, false, kFwd, kOffsetOnly},
-      {Q, P_, false, kBwd, kOffsetOnly}};
+  // Q -> X: T2, then the walk P -> X.
+  EXPECT_EQ(
+      kFwdJourney,
+      test::print_results(tt, nullptr,
+                          raptor_search(tt, nullptr, "Q", "X",
+                                        interval{day + 9h, day + 11h + 30min},
+                                        direction::kForward)));
 
-  for (auto const* const r : {static_cast<rt_timetable const*>(nullptr),
-                              static_cast<rt_timetable const*>(&rtt)}) {
-#if defined(NIGIRI_CUDA)
-    auto const gtt = routing::gpu::gpu_timetable{tt};
-    if (r != nullptr) {
-      rtt.gpu_rtt_.ptr_ = routing::gpu::make_gpu_rtt(tt, rtt);
-    }
-#endif
-    for (auto const& c : cases) {
-      auto const offset = [&](side const& s) {
-        return routing::offset{loc(s.stop_), s.intermodal_ ? 5min : 0min, 0U};
-      };
-      auto const mode = [](side const& s) {
-        return s.intermodal_ ? routing::location_match_mode::kIntermodal
-                             : routing::location_match_mode::kEquivalent;
-      };
-      auto const fwd = c.dir_ == kFwd;
-      auto const& start = fwd ? c.from_ : c.to_;
-      auto const& dest = fwd ? c.to_ : c.from_;
-      auto q = routing::query{};
-      q.start_time_ = fwd ? interval<unixtime_t>{day + 9h, day + 11h + 30min}
-                          : interval<unixtime_t>{day + 10h, day + 13h};
-      q.start_match_mode_ = mode(start);
-      q.dest_match_mode_ = mode(dest);
-      q.use_start_footpaths_ = c.start_fps_;
-      q.start_ = {offset(start)};
-      q.destination_ = {offset(dest)};
-
-      auto const tag =
-          fmt::format("{}{} -> {}{}, start_fps={}, {}, {}", c.from_.stop_,
-                      c.from_.intermodal_ ? "*" : "", c.to_.stop_,
-                      c.to_.intermodal_ ? "*" : "", c.start_fps_,
-                      fwd ? "fwd" : "bwd", r == nullptr ? "static" : "rt");
-
-      auto ss = routing::search_state{};
-      auto rs = routing::raptor_state{};
-      auto const pong = print(
-          tt, r, *routing::pong_search(tt, r, ss, rs, q, c.dir_).journeys_);
-      auto const raptor = print(
-          tt, r, *routing::raptor_search(tt, r, ss, rs, q, c.dir_).journeys_);
-      auto const has_walk = pong.find("FOOTPATH (duration=20)");
-      switch (c.expect_) {
-        case kNone: EXPECT_EQ("", pong) << tag; break;
-        case kWalk: EXPECT_NE(std::string::npos, has_walk) << tag; break;
-        case kOffsetOnly:
-          EXPECT_NE("", pong) << tag;
-          EXPECT_EQ(std::string::npos, has_walk) << tag;
-          break;
-      }
-
-#if defined(NIGIRI_CUDA)
-      auto gss = routing::search_state{};
-      auto gs = routing::gpu::gpu_raptor_state{gtt};
-      EXPECT_EQ(
-          pong,
-          print(tt, r,
-                *routing::pong_search(tt, r, gss, gs, q, c.dir_).journeys_))
-          << "gpu pong: " << tag;
-      EXPECT_EQ(
-          raptor,
-          print(tt, r,
-                *routing::raptor_search(tt, r, gss, gs, q, c.dir_).journeys_))
-          << "gpu raptor: " << tag;
-#endif
-    }
-  }
+  // arriveBy, the search starts at Q. X -> Q: the walk X -> P, then T.
+  EXPECT_EQ(kBwdJourney,
+            test::print_results(tt, nullptr,
+                                raptor_search(tt, nullptr, "Q", "X",
+                                              interval{day + 10h, day + 13h},
+                                              direction::kBackward)));
 }

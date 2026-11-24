@@ -333,9 +333,8 @@ TEST(gtfs, transfer_rules_forbidden_same_stop_with_exception) {
 TEST(gtfs, transfer_rules_walk_at_end_of_backward_search) {
   auto const tt = load_banned_stop_with_exception();
 
+  // The search starts at T8M, which has no trips: it has to walk out of it.
   auto q = routing::query{};
-  q.use_start_footpaths_ = true;  // The search starts at T8M, which has no
-                                  // trips: it has to walk out of it.
   auto const res =
       raptor_search(tt, nullptr, std::move(q), "T8M", "T8A",
                     "2019-05-01 12:00 Europe/Berlin", direction::kBackward);

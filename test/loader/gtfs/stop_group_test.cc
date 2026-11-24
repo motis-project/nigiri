@@ -72,7 +72,6 @@ TEST(gtfs, stop_groups_equivalent_routing) {
                                           sys_days{2020_y / January / 1} + 24h},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-      .use_start_footpaths_ = true,
       .start_ = {{g1, 0_minutes, 0U}},
       .destination_ = {
           {tt.locations_.location_id_to_idx_.at({"G2", src}), 0_minutes, 0U}}};

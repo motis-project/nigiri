@@ -96,7 +96,6 @@ TEST(routing, gpu_intermodal_egress_at_bound) {
           interval<unixtime_t>{monday + 9h + 45min, monday + 10h + 45min},
       .start_match_mode_ = routing::location_match_mode::kIntermodal,
       .dest_match_mode_ = routing::location_match_mode::kIntermodal,
-      .use_start_footpaths_ = false,
       .start_ = {{A, 5min, 0U}, {A2, 5min, 0U}},
       .destination_ = {{C, 0min, 0U}},
       .min_connection_count_ = 1U};

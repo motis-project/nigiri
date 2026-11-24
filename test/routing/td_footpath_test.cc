@@ -197,7 +197,6 @@ TEST(routing, td_footpath) {
             .start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 7h,
             .start_match_mode_ = routing::location_match_mode::kIntermodal,
             .dest_match_mode_ = routing::location_match_mode::kIntermodal,
-            .use_start_footpaths_ = false,
             .td_start_ =
                 {{{A,
                    {{.valid_from_ = sys_days{1970_y / January / 1},
@@ -380,7 +379,7 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
   auto const q = routing::query{.prf_idx_ = kProfile};
   auto const alighting = routing::lookup_footpath(
       B1, unixtime_t{day + 9h}, event_type::kArr, tt, &rtt, q, {{B2, 0min, 0U}},
-      routing::location_match_mode::kExact, true);
+      routing::location_match_mode::kExact);
   ASSERT_TRUE(alighting.has_value());
   EXPECT_EQ(B1, alighting->from_);
   EXPECT_EQ(B2, alighting->to_);
@@ -395,7 +394,7 @@ TEST(routing, td_footpath_lookup_keeps_the_wait) {
       td_footpath{B1, unixtime_t{day + 9h + 40min}, kTdFootpathBan});
   auto const boarding = routing::lookup_footpath(
       B2, unixtime_t{day + 10h}, event_type::kDep, tt, &rtt, q,
-      {{B1, 0min, 0U}}, routing::location_match_mode::kExact, true);
+      {{B1, 0min, 0U}}, routing::location_match_mode::kExact);
   ASSERT_TRUE(boarding.has_value());
   EXPECT_EQ(B1, boarding->from_);
   EXPECT_EQ(B2, boarding->to_);
@@ -740,7 +739,7 @@ TEST(routing, td_lookups_wait_beyond_footpath_max_duration) {
   auto const q = routing::query{.prf_idx_ = kProfile};
   auto const footpath_leg = routing::lookup_footpath(
       B1, unixtime_t{day + 9h}, event_type::kArr, tt, &rtt, q, {{B2, 0min, 0U}},
-      routing::location_match_mode::kExact, true);
+      routing::location_match_mode::kExact);
   ASSERT_TRUE(footpath_leg.has_value());
   EXPECT_EQ(unixtime_t{day + 14h}, footpath_leg->dep_time_);
   EXPECT_EQ(unixtime_t{day + 14h + 10min}, footpath_leg->arr_time_);

@@ -1285,9 +1285,9 @@ void gpu_raptor<SearchDir, WithBounds>::reconstruct(query const& q,
     auto const direct_start_ok =
         is_fwd ? j.start_time_ <= start_t : j.start_time_ >= start_t;
     if (!routing::is_journey_start(tt_, q, start_l) || !direct_start_ok) {
-      auto fp = lookup_footpath(
-          search_start_l, start_t, is_fwd ? event_type::kDep : event_type::kArr,
-          tt_, rtt_, q, q.start_, q.start_match_mode_, true);
+      auto fp = lookup_footpath(search_start_l, start_t,
+                                is_fwd ? event_type::kDep : event_type::kArr,
+                                tt_, rtt_, q, q.start_, q.start_match_mode_);
       if (fp.has_value() && is_fwd) {
         fp->arr_time_ = j.start_time_ + (fp->arr_time_ - fp->dep_time_);
         fp->dep_time_ = j.start_time_;

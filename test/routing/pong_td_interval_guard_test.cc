@@ -89,7 +89,6 @@ TEST(routing, pong_td_egress_respects_worst_time_at_dest) {
       .start_time_ = interval<unixtime_t>{day + 10h, day + 11h},
       .start_match_mode_ = routing::location_match_mode::kIntermodal,
       .dest_match_mode_ = routing::location_match_mode::kIntermodal,
-      .use_start_footpaths_ = false,
       .start_ = {{A, 5min, 0U}},
       .destination_ = {{C, 0min, 0U}},
       .td_start_ = {{B,
