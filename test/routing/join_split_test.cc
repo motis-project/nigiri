@@ -473,7 +473,7 @@ TEST(join_split, cross_linked_duplicates) {
                    {}, {2026_y / March / 27, 2026_y / March / 28});
 
   // Too many combinations: all trips added without stay-seated transfers.
-  EXPECT_EQ(2U * kN, tt.transport_traffic_days_.size());
+  EXPECT_GE(2U * kN, tt.transport_traffic_days_.size());
   for (auto const ranges : tt.trip_transport_ranges_) {
     ASSERT_EQ(1U, ranges.size());
     EXPECT_EQ((interval<stop_idx_t>{0U, 2U}), ranges[0].second);

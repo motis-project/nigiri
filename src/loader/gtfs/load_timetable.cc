@@ -60,7 +60,7 @@ bool applicable(dir const& d) {
       return false;
     }
   }
-  return d.exists(kCalenderFile) || d.exists(kCalendarDatesFile);
+  return true;
 }
 
 void load_timetable(loader_config const& config,
@@ -73,6 +73,13 @@ void load_timetable(loader_config const& config,
   auto const global_timer = nigiri::scoped_timer{"gtfs parser"};
 
   tt.n_sources_ = std::max(tt.n_sources_, to_idx(src + 1U));
+  auto const metadata_only =
+      !d.exists(kCalendarFile) && !d.exists(kCalendarDatesFile);
+  if (metadata_only) {
+    log(log_lvl::info, "loader.gtfs", "{}: no calendar, metadata only",
+        d.path().generic_string());
+    ctx.metadata_only_sources_.push_back(src);
+  }
 
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
@@ -96,7 +103,7 @@ void load_timetable(loader_config const& config,
   auto const routes =
       read_routes(src, tt, ctx, i18n, timezones, agencies,
                   load(kRoutesFile).data(), config.default_tz_, user_script);
-  auto const calendar = read_calendar(load(kCalenderFile).data());
+  auto const calendar = read_calendar(load(kCalendarFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   tt.src_end_date_.push_back(
       feed_info.feed_end_date_.value_or(date::sys_days::max()));
@@ -104,14 +111,16 @@ void load_timetable(loader_config const& config,
       tt.internal_interval_days(), calendar, dates,
       config.extend_calendar_ ? feed_info.feed_end_date_ : std::nullopt);
   auto const shape_states =
-      (shapes_data != nullptr)
+      (shapes_data != nullptr && !metadata_only)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)
           : shape_loader_state{};
-  auto trip_data =
-      read_trips(src, source_file_idx, tt, ctx, i18n, routes, service,
-                 shape_states, load(kTripsFile).data(),
-                 config.bikes_allowed_default_, config.cars_allowed_default_,
-                 config.reservation_not_required_default_, user_script);
+  auto metadata_only_service = bitfield{};
+  metadata_only_service.set(to_idx(tt.day_idx(tt.date_range_.from_)));
+  auto trip_data = read_trips(
+      src, source_file_idx, tt, ctx, i18n, routes, service, shape_states,
+      load(kTripsFile).data(), config.bikes_allowed_default_,
+      config.cars_allowed_default_, config.reservation_not_required_default_,
+      user_script, metadata_only ? &metadata_only_service : nullptr);
   auto const booking_rules = parse_booking_rules(
       tt, ctx, i18n, load(kBookingRulesFile).data(), service);
   auto const location_groups =
@@ -122,8 +131,13 @@ void load_timetable(loader_config const& config,
                              location_groups, stops);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(trip_data, stops, flex_areas, booking_rules, location_groups,
-                  i18n, load(kStopTimesFile).data(), shapes_data != nullptr,
-                  stops_accessible);
+                  i18n, load(kStopTimesFile).data(),
+                  shapes_data != nullptr && !metadata_only, stops_accessible);
+  for (auto& t : trip_data.data_) {
+    if (t.all_pickups_on_request_) {
+      t.flags_[kReservationNotRequired] = false;
+    }
+  }
   load_fares(tt, ctx, d, service, routes, stops);
   load_ticketing(tt, ctx, d, agency_ticketing, stops, routes, trip_data, src);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
@@ -169,6 +183,15 @@ void load_timetable(loader_config const& config,
       if (!t.stop_headsigns_.empty()) {
         t.stop_headsigns_.resize(t.seq_numbers_.size() - 1U);
       }
+    }
+  }
+
+  if (metadata_only) {
+    for (auto& t : trip_data.data_) {
+      for (auto& ev : t.event_times_) {
+        ev.arr_ = ev.dep_ = minutes_after_midnight_t{0};
+      }
+      t.requires_interpolation_ = false;
     }
   }
 

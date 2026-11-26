@@ -53,8 +53,12 @@ void expand_to_virts(
     timetable& tt,
     profile_idx_t const prf,
     auto const& fallback_fps,
-    mutable_fws_multimap<location_idx_t, footpath> const& qualified_rule_fps) {
+    mutable_fws_multimap<location_idx_t, footpath> const& qualified_rule_fps,
+    std::vector<source_idx_t> const& excluded_sources) {
   auto const& loc = tt.locations_;
+  auto const is_excluded = [&](location_idx_t const l) {
+    return utl::find(excluded_sources, loc.src_[l]) != end(excluded_sources);
+  };
   auto const has_virt_fp = [&](location_idx_t const a, location_idx_t const b) {
     return to_idx(a) < qualified_rule_fps.size() &&
            utl::any_of(
@@ -64,10 +68,13 @@ void expand_to_virts(
   auto fps = vector_map<location_idx_t, std::vector<footpath>>{};
   fps.resize(tt.n_locations());
   for (auto l = location_idx_t{0U}; l != fallback_fps.size(); ++l) {
-    if (loc.is_virt(l)) {
+    if (loc.is_virt(l) || is_excluded(l)) {
       continue;
     }
     auto const add = [&](location_idx_t const to, duration_t const d) {
+      if (is_excluded(to)) {
+        return;
+      }
       loc.for_each_member_pair(
           l, to, [&](location_idx_t const a, location_idx_t const b) {
             if (!has_virt_fp(a, b)) {
@@ -94,21 +101,27 @@ void expand_to_virts(
   write_profile(tt, prf, fps);
 }
 
-void expand_profile_to_virts(timetable& tt, profile_idx_t const prf) {
-  expand_to_virts(tt, prf, tt.locations_.footpaths_out_[prf], {});
+void expand_profile_to_virts(
+    timetable& tt,
+    profile_idx_t const prf,
+    std::vector<source_idx_t> const& excluded_sources) {
+  expand_to_virts(tt, prf, tt.locations_.footpaths_out_[prf], {},
+                  excluded_sources);
 }
 
 void write_profiles(
     timetable& tt,
     mutable_fws_multimap<location_idx_t, footpath> const& fallback_fps,
-    mutable_fws_multimap<location_idx_t, footpath> const& qualified_rule_fps) {
+    mutable_fws_multimap<location_idx_t, footpath> const& qualified_rule_fps,
+    std::vector<source_idx_t> const& excluded_sources) {
   auto const timer = scoped_timer{"loader.footpath.profiles"};
 
-  expand_to_virts(tt, kDefaultProfile, fallback_fps, qualified_rule_fps);
+  expand_to_virts(tt, kDefaultProfile, fallback_fps, qualified_rule_fps,
+                  excluded_sources);
 
   for (auto prf = profile_idx_t{1U}; prf != kNProfiles; ++prf) {
     if (!tt.locations_.footpaths_out_[prf].empty()) {
-      expand_profile_to_virts(tt, prf);
+      expand_profile_to_virts(tt, prf, excluded_sources);
     }
   }
 }

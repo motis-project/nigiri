@@ -1,6 +1,7 @@
 #pragma once
 
 #include <span>
+#include <vector>
 
 #include "nigiri/common/dedup_vecvec.h"
 #include "nigiri/timetable.h"
@@ -57,6 +58,8 @@ struct import_context {
       section_directions_;
 
   hash_map<bitfield, bitfield_idx_t> bitfields_;
+
+  std::vector<source_idx_t> metadata_only_sources_;
 };
 
 bitfield_idx_t register_bitfield(timetable&, import_context&, bitfield const&);

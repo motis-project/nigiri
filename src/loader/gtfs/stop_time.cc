@@ -134,6 +134,7 @@ void read_stop_times(trip_data& trips,
                                .value());
     t->requires_interpolation_ |= arrival_time == kInterpolate;
     t->requires_interpolation_ |= departure_time == kInterpolate;
+    t->all_pickups_on_request_ &= *s.pickup_type_ == 2 || *s.pickup_type_ > 3;
     t->event_times_.push_back({.arr_ = arrival_time, .dep_ = departure_time});
     if (store_distances) {
       add_distance(*t, *s.distance_);

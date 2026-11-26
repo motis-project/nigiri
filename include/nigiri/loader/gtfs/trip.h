@@ -121,6 +121,7 @@ struct trip {
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
+  bool all_pickups_on_request_{true};
   std::array<bool, kNumRouteFlags> flags_{false, false, false, true};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
@@ -164,7 +165,8 @@ trip_data read_trips(
     std::array<bool, kNumClasses> const& bikes_allowed_default,
     std::array<bool, kNumClasses> const& cars_allowed_default,
     std::array<bool, kNumClasses> const& reservation_not_required_default,
-    script_runner const& = script_runner{});
+    script_runner const& = script_runner{},
+    bitfield const* unknown_service = nullptr);
 
 void read_frequencies(trip_data&, std::string_view);
 

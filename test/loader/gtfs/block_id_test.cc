@@ -119,7 +119,7 @@ TEST(gtfs, block_id) {
   auto const files =
       mem_dir{{{path{kAgencyFile}, std::string{agency}},
                {path{kStopFile}, std::string{stops}},
-               {path{kCalenderFile}, std::string{calendar}},
+               {path{kCalendarFile}, std::string{calendar}},
                {path{kCalendarDatesFile}, std::string{calendar_dates}},
                {path{kRoutesFile}, std::string{routes}},
                {path{kTripsFile}, std::string{trips}},

@@ -21,6 +21,7 @@
 #include "nigiri/loader/register.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
+#include "nigiri/wikidata.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -95,6 +96,7 @@ struct stop {
   std::string_view desc_;
   geo::latlng coord_;
   std::string_view timezone_;
+  std::string_view wikidata_;
   hash_set<stop*> same_name_, children_;
   stop* parent_{nullptr};
   std::vector<unsigned> close_;
@@ -134,6 +136,7 @@ std::pair<stops_map_t, location_accessible_map_t> read_stops(
     utl::csv_col<utl::cstr, UTL_NAME("stop_lat")> lat_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_lon")> lon_;
     utl::csv_col<uint8_t, UTL_NAME("wheelchair_boarding")> wheelchair_boarding_;
+    utl::csv_col<utl::cstr, UTL_NAME("wikidata")> wikidata_;
   };
 
   stops_map_t locations;
@@ -163,6 +166,7 @@ std::pair<stops_map_t, location_accessible_map_t> read_stops(
         new_stop->stop_code_ = s.stop_code_->view();
         new_stop->desc_ = s.stop_desc_->view();
         new_stop->timezone_ = s.timezone_->trim().view();
+        new_stop->wikidata_ = s.wikidata_->view();
 
         // we treat unknown as yes, because this data is currently not available
         // commonly enough
@@ -228,6 +232,7 @@ std::pair<stops_map_t, location_accessible_map_t> read_stops(
                              : get_tz_idx(tt, timezones, s->timezone_),
         default_transfer_time,
         timezones};
+    loc.wikidata_ = parse_wikidata_id(tt, s->wikidata_);
     if (process_location(r, loc)) {
       locations.emplace(id, s->location_ = register_location(tt, ctx, loc));
       accessible.insert({s->location_, s->wheelchair_boarding_});
