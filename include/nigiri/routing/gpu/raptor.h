@@ -66,10 +66,9 @@ struct gpu_raptor_state {
   ~gpu_raptor_state();
 
   // The device state of BM-RAPTOR's mc phases, built on first use and kept
-  // (too expensive per query); borrows this state's scratch and stream. The
-  // allocation can fail: try_mc_state() first (a failure is remembered).
+  // (too expensive per query); borrows this state's scratch and stream.
+  // nullptr if the allocation failed (a failure is remembered).
   gpu_mcraptor_state* try_mc_state();
-  gpu_mcraptor_state& mc_state();
 
   struct impl;
   std::unique_ptr<impl> impl_;

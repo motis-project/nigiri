@@ -346,12 +346,6 @@ gpu_mcraptor_state* gpu_raptor_state::try_mc_state() {
   return impl_->mc_state_.get();
 }
 
-gpu_mcraptor_state& gpu_raptor_state::mc_state() {
-  auto* const s = try_mc_state();
-  utl::verify(s != nullptr, "gpu_raptor_state: no device mcraptor state");
-  return *s;
-}
-
 template <direction SearchDir, bool WithBounds>
 gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     timetable const& tt,
