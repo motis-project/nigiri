@@ -111,6 +111,18 @@ struct raptor {
     if constexpr (kTrackMin) {
       if (state_.track_min_) {
         state_.min_.assign(n_locations_, min_label{});
+        state_.profile_.clear();
+        state_.profile_start_.clear();
+        state_.agg_.labels_.clear();
+        if (state_.track_profile_) {
+          state_.profile_.resize(n_locations_);
+        }
+        if (state_.track_profile_ || state_.track_agg_) {
+          state_.profile_start_.resize(n_locations_);
+        }
+        if (state_.track_agg_) {
+          state_.agg_.clear(n_locations_);
+        }
       }
     }
     if (!dist_to_end_.empty()) {
@@ -465,22 +477,72 @@ private:
       if (ready == kInvalid || owner == location_idx_t::invalid()) {
         return;
       }
-
+      // search<> passes start + max_travel_time + 1 and means "strictly
+      // faster". RAPTOR itself prunes with <=, so a label exactly at `worst`
+      // (= max_travel_time + 1 minutes) can still be written. Do not report it.
       if (!is_better(ready, worst)) {
         return;
       }
-      auto const dur = duration_t{static_cast<duration_t::rep>(
-          (delta_to_unix(base(), ready) - run_start).count())};
+      auto const arrival = delta_to_unix(base(), ready);
+      auto const transfers = static_cast<std::uint8_t>(k == 0U ? 0U : k - 1U);
+      auto const dur = duration_t{
+          static_cast<duration_t::rep>((arrival - run_start).count())};
       auto& m = state_.min_[i];
       if (dur < m.dur_) {  // strict: on a tie the earlier-processed run stays
         m.dur_ = dur;
         m.owner_ = owner;
-        m.transfers_ = static_cast<std::uint8_t>(k == 0U ? 0U : k - 1U);
+        m.transfers_ = transfers;
         m.departure_ = run_start;
+      }
+      if (state_.track_profile_ || state_.track_agg_) {
+        if (k == 0U) {  // start stop: reached without a vehicle
+          auto& s = state_.profile_start_[i];
+          if (dur < s.dur_) {
+            s.dur_ = dur;
+            s.owner_ = owner;
+          }
+        } else {
+          if (state_.track_profile_) {
+            record_profile(i, run_start, arrival, owner, transfers);
+          }
+          if (state_.track_agg_) {
+            state_.agg_.offer(i, run_start, arrival, owner,
+                              state_.profile_start_[i]);
+          }
+        }
       }
     });
   }
 
+  // Runs go from the latest departure to the earliest, so entries are added
+  // with falling departure. A journey that does not arrive strictly earlier
+  // than the last entry is dominated (earlier departure, no earlier arrival)
+  // and is not kept: the list is the exact profile, arrival and departure both
+  // strictly increase along it.
+  // Several rounds of the same run may improve the same stop: the entry of the
+  // run is overwritten, so there is at most one entry per run and stop.
+  void record_profile(std::uint64_t const i,
+                      unixtime_t const run_start,
+                      unixtime_t const arrival,
+                      location_idx_t const owner,
+                      std::uint8_t const transfers) {
+    auto& entries = state_.profile_[i];
+    if (!entries.empty()) {
+      auto& last = entries.back();
+      if (last.departure_ == run_start) {  // same run, a later round
+        if (arrival < last.arrival_) {
+          last.arrival_ = arrival;
+          last.owner_ = owner;
+          last.transfers_ = transfers;
+        }
+        return;
+      }
+      if (!(arrival < last.arrival_)) {  // dominated by a later departure
+        return;
+      }
+    }
+    entries.push_back(profile_entry{run_start, arrival, owner, transfers});
+  }
   std::uint16_t get_lb(std::uint32_t const i) const {
     if constexpr (kUseLowerBounds) {
       assert(i < lb_.size());

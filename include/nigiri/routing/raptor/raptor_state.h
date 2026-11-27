@@ -13,6 +13,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/flat_matrix_view.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/raptor/n_to_all_aggregates.h"
 #include "nigiri/types.h"
 namespace nigiri {
 struct timetable;
@@ -20,13 +21,42 @@ struct timetable;
 
 namespace nigiri::routing {
 
+// n-to-all: shortest travel time to a stop over all runs of a range search.
 struct min_label {
   bool reached() const { return owner_ != location_idx_t::invalid(); }
+
+  // arrival (as stored in best_) minus the departure of the run
   duration_t dur_{std::numeric_limits<duration_t::rep>::max()};
+  // start stop the shortest journey began at (map it to your origin)
   location_idx_t owner_{location_idx_t::invalid()};
+  // number of transfers of that journey
   std::uint8_t transfers_{std::numeric_limits<std::uint8_t>::max()};
+  // time at the origin of the run that achieves dur_
   unixtime_t departure_{unixtime_t::max()};
 };
+
+// n-to-all profile of a stop, two parts:
+//
+// profile_entry: one entry per run that gives the stop a vehicle journey that
+// is not dominated. The person has to wait for the departure of the run.
+struct profile_entry {
+  unixtime_t departure_;       // time at the origin of the run
+  unixtime_t arrival_;         // "ready to continue", same value as min_label
+  location_idx_t owner_;       // start stop the journey began at
+  std::uint8_t transfers_;
+};
+
+// profile_start_label: the stop is a start stop (the origin itself, or a
+// footpath/equivalent neighbour of it). The person is already there or walks:
+// no vehicle, no waiting, the same duration at every minute.
+struct profile_start_label {
+  bool reached() const { return owner_ != location_idx_t::invalid(); }
+
+  duration_t dur_{std::numeric_limits<duration_t::rep>::max()};
+  location_idx_t owner_{location_idx_t::invalid()};
+};
+
+
 struct raptor_state {
   raptor_state() = default;
   raptor_state(raptor_state const&) = delete;
@@ -142,6 +172,13 @@ struct raptor_state {
   std::vector<location_idx_t> owner_storage_;      
   std::vector<location_idx_t> tmp_owner_storage_;
   std::vector<delta_t> bounds_storage_;
+  bool track_profile_{false};
+  std::vector<std::vector<profile_entry>> profile_;
+  // start labels: filled if track_profile_ or track_agg_
+  std::vector<profile_start_label> profile_start_;
+  // aggregates: only recorded together with track_min_
+  bool track_agg_{false};
+  agg_state agg_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
