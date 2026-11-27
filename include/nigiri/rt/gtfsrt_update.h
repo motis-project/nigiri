@@ -54,7 +54,8 @@ statistics gtfsrt_update_msg(timetable const&,
                              source_idx_t const,
                              std::string_view tag,
                              transit_realtime::FeedMessage const&,
-                             bool use_vehicle_position = false);
+                             bool use_vehicle_position = false,
+                             bool skip_existing_update = false);
 
 statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
@@ -62,13 +63,15 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              std::string_view tag,
                              std::string_view protobuf,
                              transit_realtime::FeedMessage& msg,
-                             bool use_vehicle_position = false);
+                             bool use_vehicle_position = false,
+                             bool skip_existing_update = false);
 
 statistics gtfsrt_update_buf(timetable const&,
                              rt_timetable&,
                              source_idx_t const,
                              std::string_view tag,
                              std::string_view protobuf,
-                             bool use_vehicle_position = false);
+                             bool use_vehicle_position = false,
+                             bool skip_existing_update = false);
 
 }  // namespace nigiri::rt
