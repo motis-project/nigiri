@@ -30,7 +30,8 @@ enum class search_mode { kOneToOne, kOneToAll };
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          bool LazyReset = false>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -192,7 +193,14 @@ struct raptor {
 
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
-    round_times_.reset(kInvalidArray);
+    if constexpr (LazyReset) {
+      utl::fill(round_times_.entries_.subspan(0U, round_times_.n_columns_),
+                kInvalidArray);
+      state_.n_init_rounds_ = 1U;
+    } else {
+      round_times_.reset(kInvalidArray);
+      state_.n_init_rounds_ = kMaxTransfers + 2U;
+    }
     if constexpr (SearchMode == search_mode::kOneToAll) {
       utl::fill(state_.one_to_all_arrivals_.entries_, kInvalid);
     }
@@ -241,6 +249,14 @@ struct raptor {
       update_one_to_all_arrivals(0U);
     }
     for (auto k = 1U; k != end_k; ++k) {
+      if constexpr (LazyReset) {
+        if (k == state_.n_init_rounds_) {
+          auto const n = round_times_.n_columns_;
+          utl::fill(round_times_.entries_.subspan(k * n, n), kInvalidArray);
+          ++state_.n_init_rounds_;
+        }
+      }
+
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
@@ -420,8 +436,9 @@ struct raptor {
       return;
     }
 
+    auto const end_init_k = std::min(end_k, state_.n_init_rounds_);
     is_dest_.for_each_set_bit([&](auto const i) {
-      for (auto k = 1U; k != end_k; ++k) {
+      for (auto k = 1U; k < end_init_k; ++k) {
         auto const dest_time = round_times_[k][i][Vias];
         if (dest_time != kInvalid) {
           trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",

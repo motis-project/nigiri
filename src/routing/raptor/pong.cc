@@ -32,6 +32,10 @@
 
 namespace nigiri::routing {
 
+constexpr auto const kPruneWithPingBounds = true;
+constexpr auto const kLazyReset = true;
+constexpr auto const kMaxLookAhead = 6_days;
+
 interval<unixtime_t> pong_search_interval(direction const search_dir,
                                           timetable const& tt,
                                           query const& q,
@@ -46,16 +50,6 @@ interval<unixtime_t> pong_search_interval(direction const search_dir,
       search_dir, max_search_iv,
       std::min(q.max_travel_time_ + min_look_ahead, kMaxTravelTime));
 }
-
-constexpr auto const kPruneWithPingBounds = true;
-
-// Pong traverses huge parts of the timetable to collect the requested number
-// of journeys. Journeys departing (kFwd) / arriving (!kFwd) weeks or months
-// after / before the queried start time are most likely not interesting for
-// the user, so the search is capped at this distance from the query start
-// time. Six days (instead of a full week) prevents a query on a Monday from
-// reporting journeys on the following / previous Monday.
-constexpr auto const kMaxLookAhead = 6_days;
 
 std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     timetable const& tt,
@@ -87,14 +81,14 @@ routing_result pong(timetable const& tt,
                     std::optional<std::chrono::seconds> timeout) {
   constexpr auto kFwd = (SearchDir == direction::kForward);
 
-  using ping_algo_t =
-      std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
-                         gpu::gpu_raptor<SearchDir, false>,
-                         raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>>;
+  using ping_algo_t = std::conditional_t<
+      std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+      gpu::gpu_raptor<SearchDir, false>,
+      raptor<SearchDir, Rt, Vias, search_mode::kOneToOne, kLazyReset>>;
   using pong_algo_t = std::conditional_t<
       std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
       gpu::gpu_raptor<flip(SearchDir), kPruneWithPingBounds>,
-      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>>;
+      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne, kLazyReset>>;
 
   s_state.results_.clear();
 
