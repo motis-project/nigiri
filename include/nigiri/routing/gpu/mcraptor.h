@@ -87,7 +87,6 @@ struct gpu_mcraptor {
 
   // without lb pruning the fixed-size bags overflow, unless bounded
   static constexpr bool kUseLowerBounds = true;
-  static constexpr bool kNeedsLbWhenBounded = false;
   static constexpr auto const kDirIdx =
       SearchDir == direction::kForward ? 0U : 1U;
 

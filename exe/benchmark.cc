@@ -271,9 +271,8 @@ std::vector<std::string> leg_problems(timetable const& tt,
 // What bmrapp computes, the slow way: range McRAPTOR over every criterion,
 // cut down by the restriction (bmrap_common.h) with its own 2-criteria
 // journeys as the anchors.
-std::vector<routing::bmrap_detail::anchor> anchors_of(
-    pareto_set<journey> const& res) {
-  auto anchors = std::vector<routing::bmrap_detail::anchor>{};
+std::vector<routing::anchor> anchors_of(pareto_set<journey> const& res) {
+  auto anchors = std::vector<routing::anchor>{};
   for (auto const& j : res) {
     if (utl::none_of(res, [&](journey const& o) {
           return o.tuple_dominates(j) && !j.tuple_dominates(o);
@@ -296,7 +295,7 @@ routing::routing_result restricted_range_search(
   auto& res = ss.results_;
   auto const anchors = anchors_of(res);
   utl::erase_if(res.els_, [&](journey const& j) {
-    return routing::bmrap_detail::outside_restriction<SearchDir>(
+    return routing::outside_restriction<SearchDir>(
         anchors, j.start_time_, j.dest_time_,
         static_cast<unsigned>(j.transfers_) + 1U);
   });
@@ -337,8 +336,7 @@ restricted_diff compare_restricted(result_set const& bm,
       return window.contains(j.start_time_) &&
              j.travel_time() < kCheckedMaxTravelTime &&
              utl::any_of(
-                 anchors,
-                 [&](routing::bmrap_detail::anchor const& y) {
+                 anchors, [&](routing::anchor const& y) {
                    return !is_better(y.anchored_, j.start_time_) &&
                           y.trips_ <= j.transfers_ + 1U &&
                           !is_better(edge, y.found_);

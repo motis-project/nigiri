@@ -16,7 +16,6 @@
 #include "nigiri/loader/load.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/raptor/bmrap_common.h"
-#include "nigiri/routing/raptor/bmrap_filters.h"
 #include "nigiri/routing/raptor/bmraptor.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/pong.h"
@@ -285,7 +284,7 @@ std::vector<tuple_t> restricted_reference(fixture const& f,
     return std::get<2>(a) <= std::get<2>(b) &&
            std::get<0>(a) >= std::get<0>(b) && std::get<1>(a) <= std::get<1>(b);
   };
-  auto anchors = std::vector<routing::bmrap_detail::anchor>{};
+  auto anchors = std::vector<routing::anchor>{};
   for (auto const& j : js) {
     if (std::none_of(begin(js), end(js), [&](tuple_t const& o) {
           return dominates(o, j) && !dominates(j, o);
@@ -297,10 +296,10 @@ std::vector<tuple_t> restricted_reference(fixture const& f,
   }
   std::erase_if(js, [&](tuple_t const& j) {
     auto const& [dep, arr, transfers] = j;
-    return fwd ? routing::bmrap_detail::outside_restriction<
-                     direction::kForward>(anchors, dep, arr, transfers + 1U)
-               : routing::bmrap_detail::outside_restriction<
-                     direction::kBackward>(anchors, arr, dep, transfers + 1U);
+    return fwd ? routing::outside_restriction<direction::kForward>(
+                     anchors, dep, arr, transfers + 1U)
+               : routing::outside_restriction<direction::kBackward>(
+                     anchors, arr, dep, transfers + 1U);
   });
   return js;
 }
@@ -667,8 +666,8 @@ TEST(bmrap, finds_departures_beyond_fastest_direct) {
 // available at J with at most J's trips. Default slack: deadline = departure +
 // travel + clamp(travel / 2, 20 min, 180 min).
 TEST(bmrap, restriction_uses_only_a_of_j) {
-  using routing::bmrap_detail::anchor;
-  using routing::bmrap_detail::outside_restriction;
+  using routing::anchor;
+  using routing::outside_restriction;
   auto const at = [](int const h, int const m) {
     return unixtime_t{sys_days{2024_y / June / 19}} + std::chrono::hours{h} +
            std::chrono::minutes{m};
@@ -691,8 +690,8 @@ TEST(bmrap, restriction_uses_only_a_of_j) {
 // search from J reports, whatever the order of the anchor list (bmrapp builds
 // it incrementally, the reference from a pareto set).
 TEST(bmrap, restriction_ties_take_fewest_trips) {
-  using routing::bmrap_detail::anchor;
-  using routing::bmrap_detail::outside_restriction;
+  using routing::anchor;
+  using routing::outside_restriction;
   auto const at = [](int const h, int const m) {
     return unixtime_t{sys_days{2024_y / June / 19}} + std::chrono::hours{h} +
            std::chrono::minutes{m};
@@ -720,7 +719,7 @@ TEST(bmrap, restriction_ties_take_fewest_trips) {
 // deadline 17:59) departs after it, and the next step (12:33) no longer covers
 // 12:32. Capped by it, the run allowed 6 trips and pruned the journey.
 TEST(bmrap, trip_budget_cap_skips_anchors_before_the_step) {
-  using routing::bmrap_detail::anchor;
+  using routing::anchor;
   auto const day = unixtime_t{sys_days{2026_y / November / 24}};
   auto const at = [&](int const h, int const m) {
     return day + std::chrono::hours{h} + std::chrono::minutes{m};
@@ -730,15 +729,15 @@ TEST(bmrap, trip_budget_cap_skips_anchors_before_the_step) {
                                            {at(12, 29), at(16, 28), 5U},
                                            {at(13, 27), at(16, 28), 6U},
                                            {at(13, 27), at(17, 28), 5U}};
-  auto const runs = routing::bmrap_detail::bound_runs<direction::kForward>(
+  auto const runs = routing::bound_runs<direction::kForward>(
       anchors, /*horizon=*/at(12, 29), /*budget=*/10U);
   ASSERT_EQ(anchors.size(), runs.size());
   // trip_budget() of each, capped only by anchors departing from 12:30 on
-  EXPECT_EQ((routing::bmrap_detail::bound_run{at(16, 56), 10U}), runs[0]);
-  EXPECT_EQ((routing::bmrap_detail::bound_run{at(16, 58), 9U}), runs[1]);
-  EXPECT_EQ((routing::bmrap_detail::bound_run{at(18, 28), 7U}), runs[2]);
-  EXPECT_EQ((routing::bmrap_detail::bound_run{at(17, 59), 7U}), runs[3]);
-  EXPECT_EQ((routing::bmrap_detail::bound_run{at(19, 29), 5U}), runs[4]);
+  EXPECT_EQ((routing::bound_run{at(16, 56), 10U}), runs[0]);
+  EXPECT_EQ((routing::bound_run{at(16, 58), 9U}), runs[1]);
+  EXPECT_EQ((routing::bound_run{at(18, 28), 7U}), runs[2]);
+  EXPECT_EQ((routing::bound_run{at(17, 59), 7U}), runs[3]);
+  EXPECT_EQ((routing::bound_run{at(19, 29), 5U}), runs[4]);
 }
 
 namespace {
@@ -1480,64 +1479,10 @@ TEST(bmrap, relaxed_ping_keeps_best_intermodal_arrival) {
                 pong, "two destination offsets in one round");
 }
 
-// ---------------------------------------------------------------------------
-// bounded_needs_lb<Algo>(): the lower-bound-dijkstra skip trait
-// ---------------------------------------------------------------------------
-
-namespace {
-
-// the three shapes it branches on: never uses lb (gpu_raptor), uses lb but does
-// not need it once bounded (raptor, basic_mcraptor), no declared opinion
-// (gpu_mcraptor, the conservative default)
-struct mock_no_lb_algo {
-  static constexpr bool kUseLowerBounds = false;
-};
-struct mock_bounded_skips_lb_algo {
-  static constexpr bool kUseLowerBounds = true;
-  static constexpr bool kNeedsLbWhenBounded = false;
-};
-struct mock_bounded_still_needs_lb_algo {
-  static constexpr bool kUseLowerBounds = true;
-  static constexpr bool kNeedsLbWhenBounded = true;
-};
-struct mock_undeclared_algo {
-  static constexpr bool kUseLowerBounds = true;
-};
-
-}  // namespace
-
-TEST(bmrap, bounded_needs_lb_trait) {
-  EXPECT_FALSE(routing::bounded_needs_lb<mock_no_lb_algo>());
-  EXPECT_FALSE(routing::bounded_needs_lb<mock_bounded_skips_lb_algo>());
-  EXPECT_TRUE(routing::bounded_needs_lb<mock_bounded_still_needs_lb_algo>());
-  EXPECT_TRUE(routing::bounded_needs_lb<mock_undeclared_algo>())
-      << "an engine that declares no opinion must default to needing lb";
-}
-
-// The two engines bmrap_profile.cc bounds unconditionally must not need lb once
-// bounded, which is what makes skipping the bwd_lb dijkstra there safe.
-TEST(bmrap, bounded_needs_lb_matches_real_engines) {
-  using cpu_raptor =
-      routing::raptor<direction::kForward, false, via_offset_t{0U},
-                      routing::search_mode::kOneToOne>;
-  using cpu_mcraptor =
-      routing::basic_mcraptor<direction::kForward, routing::arr_criteria>;
-  EXPECT_FALSE(routing::bounded_needs_lb<cpu_raptor>());
-  EXPECT_FALSE(routing::bounded_needs_lb<cpu_mcraptor>());
-#if defined(NIGIRI_CUDA)
-  // ... nor the device ones: all-GPU BMRAPP runs no lower-bound dijkstra
-  EXPECT_FALSE((routing::bounded_needs_lb<
-                routing::gpu::gpu_raptor<direction::kForward, false>>()));
-  EXPECT_FALSE((routing::bounded_needs_lb<routing::gpu::gpu_mcraptor<
-                    direction::kForward, routing::arr_criteria>>()));
-#endif
-}
-
 #if defined(NIGIRI_CUDA)
 namespace {
 
-// gpu_mc: the multicriteria phases on the device as well (if it implements
-// the criteria, see kGpuMcSupported) or on the CPU.
+// gpu_mc: the multicriteria phases on the device as well or on the CPU.
 template <typename Criteria>
 std::vector<tuple_t> run_bmrapp_gpu(fixture const& f,
                                     routing::query q,

@@ -281,7 +281,6 @@ struct basic_mcraptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
-  static constexpr bool kNeedsLbWhenBounded = false;  // see effective_lb()
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kDirIdx = kFwd ? 0U : 1U;
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -296,11 +295,11 @@ struct basic_mcraptor {
       timetable const&,
       rt_timetable const*,
       state_t&,
-      bitvec& is_dest,
-      std::array<bitvec, kMaxVias>& is_via,
-      std::vector<std::uint16_t>& dist_to_dest,
+      bitvec const& is_dest,
+      std::array<bitvec, kMaxVias> const& is_via,
+      std::vector<std::uint16_t> const& dist_to_dest,
       hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
-      std::vector<std::uint16_t>& lb,
+      std::vector<std::uint16_t> const& lb,
       std::vector<via_stop> const& via_stops,
       day_idx_t base,
       clasz_mask_t allowed_claszes,

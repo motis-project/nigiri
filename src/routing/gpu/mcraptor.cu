@@ -683,7 +683,6 @@ void gpu_mcraptor<SearchDir, Criteria>::execute(
     r.bounds_n_locations_ = bounds_->n_locations_;
     r.bounds_budget_ = bounds_->budget_;
     r.bounds_staggered_ = bounds_->staggered_;
-    r.has_bounds_ = true;
   }
   r.cur_budget_ = end_k - 1U;  // trips allowed for this start time
   if (n_guide_targets_ != 0U) {

@@ -3,10 +3,26 @@
 #include <cstdint>
 #include <vector>
 
+#include "cista/cuda_check.h"
+
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/limits.h"
 
 namespace nigiri::routing {
+
+// sigma_arr of the paper: a journey of `minutes` travel time may arrive
+// kArrSlack times as late, by kArrSlackMin to kArrSlackCap minutes more. Shared
+// by the anchor deadlines and the relaxed target pruning of the engines.
+inline constexpr auto kArrSlack = 1.5;
+inline constexpr auto kArrSlackMin = 20.0;
+inline constexpr auto kArrSlackCap = 180.0;
+
+CISTA_CUDA_COMPAT inline double relax_arr(double const minutes) {
+  auto const extra = minutes * (kArrSlack - 1.0);
+  return minutes + (extra < kArrSlackMin   ? kArrSlackMin
+                    : extra > kArrSlackCap ? kArrSlackCap
+                                           : extra);
+}
 
 // BM-RAPTOR pruning bounds (Delling, Dibbelt, Pajor: "Fast and Exact Public
 // Transit Routing with Restricted Pareto Sets", ALENEX'19). at(i, v) is the
