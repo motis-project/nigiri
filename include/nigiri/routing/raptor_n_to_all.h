@@ -53,8 +53,8 @@ struct n_to_all_result {
   std::uint32_t n_origins() const { return state_.agg_.n_origins_; }
 
   std::uint16_t minutes(location_idx_t const l, std::uint32_t const o) const {
-    return state_.agg_.minutes_.empty()
-               ? std::uint16_t{0U}
+    return o >= n_origins()
+           ? std::uint16_t{0U}
     : state_.agg_.minutes_[to_idx(l) * n_origins() + o];
   }
 
