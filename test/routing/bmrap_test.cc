@@ -128,9 +128,9 @@ std::vector<tuple_t> tuples(pareto_set<routing::journey> const& js) {
 }
 
 struct fixture {
-  fixture()
+  explicit fixture(std::string_view const gtfs = kGTFS)
       : tt_{loader::load(
-            mem_dir::read(std::string{kGTFS}),
+            mem_dir::read(std::string{gtfs}),
             {sys_days{2024_y / June / 18}, sys_days{2024_y / June / 20}})} {
     o_ = tt_.locations_.location_id_to_idx_.at({"O", source_idx_t{0}});
     d_ = tt_.locations_.location_id_to_idx_.at({"D", source_idx_t{0}});
@@ -1598,32 +1598,103 @@ TEST(bmrap, gpu_extension_cases_match_cpu) {
 // footpath slack and the guide's catchability. The fixture's tightest
 // transfers leave 10 minutes at stops with the default 2: settings up to the
 // limit find the default journeys, past it those transfers are gone (longer
-// ones remain). Per setting, on the plain
+// ones remain). The footpath fixture below walks 5 minutes and boards right
+// away (no transfer buffer after a walk), which only the footpath slack of the
+// bounds and of the guide lets through. Per setting, on the plain
 // windows and the four extension cases, BMRAPP on the CPU must be the
 // restricted range mcraptor set and contain every plain raptor journey, and
 // the device (mc phases on the CPU and on the device, and plain raptor) must
 // agree with the CPU.
 namespace {
 
+//   route | dep         | arr         | transfers
+//   ------+-------------+-------------+----------
+//   R1+R2 | 10:00 O     | 12:30 D     | 1 (A -5 min walk-> B, 15 min there)
+//   RD    | 10:10 O     | 13:00 D     | 0
+//   R1+R2 | 11:00 O     | 13:30 D     | 1 (as above)
+constexpr auto const kWalkGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,DB,https://db.de,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+O,O,0.0,1.0,,
+A,A,2.0,3.0,,
+B,B,4.0,5.0,,
+D,D,6.0,7.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,R1,,,3
+R2,DB,R2,,,3
+RD,DB,RD,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R1,S,T1a,,
+R2,S,T2a,,
+R1,S,T1b,,
+R2,S,T2b,,
+RD,S,TD,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1a,10:00:00,10:00:00,O,0,0,0
+T1a,11:50:00,11:50:00,A,1,0,0
+T2a,12:05:00,12:05:00,B,0,0,0
+T2a,12:30:00,12:30:00,D,1,0,0
+T1b,11:00:00,11:00:00,O,0,0,0
+T1b,12:50:00,12:50:00,A,1,0,0
+T2b,13:05:00,13:05:00,B,0,0,0
+T2b,13:30:00,13:30:00,D,1,0,0
+TD,10:10:00,10:10:00,O,0,0,0
+TD,13:00:00,13:00:00,D,1,0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+S,20240618,1
+S,20240619,1
+S,20240620,1
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+A,B,2,300
+B,A,2,300
+)"sv;
+
 struct tts_case {
   routing::transfer_time_settings tts_;
   bool as_default_;  // the 10-minute transfers stay
+  bool walk_as_default_;  // the 5-minute walk still makes it in 15
   char const* name_;
 };
 
+// as_default_ / walk_as_default_: see above, for 2-minute transfers and the
+// 5-minute walk
 std::vector<tts_case> tts_cases() {
   return {
-      {{.default_ = false}, true, "factor 1, not default"},
-      {{.default_ = false, .factor_ = 2.0F}, true, "factor 2"},
+      {{.default_ = false}, true, true, "factor 1, not default"},
+      {{.default_ = false, .factor_ = 2.0F}, true, true, "factor 2"},
+      {{.default_ = false, .factor_ = 3.0F},
+       true,
+       true,
+       "factor 3 (walk at the limit)"},
+      {{.default_ = false, .factor_ = 5.0F},
+       true,
+       false,
+       "factor 5 (transfers at the limit, walk past it)"},
       {{.default_ = false, .min_transfer_time_ = duration_t{10}},
        true,
-       "min 10 (at the limit)"},
-      {{.default_ = false, .factor_ = 5.0F}, true, "factor 5 (at the limit)"},
+       true,
+       "min 10 (transfers at the limit)"},
       {{.default_ = false, .min_transfer_time_ = duration_t{11}},
        false,
+       true,
        "min 11"},
       {{.default_ = false, .additional_time_ = duration_t{9}},
        false,
+       true,
        "additional 9"},
   };
 }
@@ -1684,22 +1755,26 @@ void expect_tts_consistent(fixture const& f,
 
 TEST(bmrap, adjusted_transfer_times) {
   auto const f = fixture{};
+  auto const walk = fixture{kWalkGTFS};
   for (auto const& t : tts_cases()) {
-    auto const run = [&](routing::query q, direction const dir,
+    auto const run = [&](fixture const& fx, routing::query q,
+                         direction const dir, bool const as_default,
                          std::string const& what) {
       q.transfer_time_settings_ = t.tts_;
       auto const tag = fmt::format("{}, {}", t.name_, what);
       expect_tts_consistent<routing::arr_criteria, routing::mcraptor_state>(
-          f, q, dir, t.as_default_, tag);
+          fx, q, dir, as_default, tag);
       expect_tts_consistent<routing::arr_non_transit_mode_switches_criteria,
                             routing::mcraptor_non_transit_mode_switches_state>(
-          f, q, dir, t.as_default_, tag + ", composed");
+          fx, q, dir, as_default, tag + ", composed");
     };
     for (auto const dir : kDirs) {
-      run(f.make_query(dir), dir, name(dir));
+      run(f, f.make_query(dir), dir, t.as_default_, name(dir));
+      run(walk, walk.make_query(dir), dir, t.walk_as_default_,
+          fmt::format("walk, {}", name(dir)));
     }
     for (auto const& c : all_extend_cases()) {
-      run(extend_query(f, c), c.dir_, c.name_);
+      run(f, extend_query(f, c), c.dir_, t.as_default_, c.name_);
     }
   }
 }
