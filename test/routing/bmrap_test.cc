@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <map>
 #include <set>
 #include <string>
 #include <string_view>
@@ -165,6 +166,7 @@ struct fixture {
 struct run_result {
   std::vector<tuple_t> js_;
   interval<unixtime_t> scanned_{};
+  std::map<std::string, std::uint64_t> stats_{};
 };
 
 // BMRAPP on the CPU scalar engine; the state type selects the scalar engine
@@ -176,7 +178,7 @@ run_result bmrapp(fixture const& f, routing::query q, direction const dir) {
   auto ms = routing::basic_mcraptor_state<Criteria>{};
   auto const r = routing::bmrap_profile_search<Criteria>(f.tt_, nullptr, ss, as,
                                                          ms, std::move(q), dir);
-  return {tuples(*r.journeys_), r.interval_};
+  return {tuples(*r.journeys_), r.interval_, r.algo_stats_};
 }
 
 // Plain range search: with raptor_state the two-criteria search, i.e. the
@@ -1482,20 +1484,20 @@ TEST(bmrap, relaxed_ping_keeps_best_intermodal_arrival) {
 #if defined(NIGIRI_CUDA)
 namespace {
 
-// gpu_mc: the multicriteria phases on the device as well or on the CPU.
+// BMRAPP on the device; gpu_mc: the multicriteria phases there as well or on
+// the CPU.
 template <typename Criteria>
-std::vector<tuple_t> run_bmrapp_gpu(fixture const& f,
-                                    routing::query q,
-                                    direction const dir,
-                                    bool const gpu_mc = true) {
+run_result bmrapp_gpu(fixture const& f,
+                      routing::query q,
+                      direction const dir,
+                      bool const gpu_mc = true) {
   auto ss = routing::search_state{};
   auto gtt = routing::gpu::gpu_timetable{f.tt_};
   auto as = routing::gpu::gpu_raptor_state{gtt};
   auto ms = routing::basic_mcraptor_state<Criteria>{};
-  return tuples(
-      *(routing::bmrap_profile_search<Criteria>(
-            f.tt_, nullptr, ss, as, ms, std::move(q), dir, std::nullopt, gpu_mc)
-            .journeys_));
+  auto const r = routing::bmrap_profile_search<Criteria>(
+      f.tt_, nullptr, ss, as, ms, std::move(q), dir, std::nullopt, gpu_mc);
+  return {tuples(*r.journeys_), r.interval_, r.algo_stats_};
 }
 
 // The device mcraptor on its own: nothing else exercises gpu_mcraptor, so a
@@ -1516,7 +1518,7 @@ void expect_gpu_matches_cpu(direction const dir) {
   auto const f = fixture{};
   auto const q = f.make_query(dir);
   EXPECT_EQ(bmrapp<Criteria>(f, q, dir).js_,
-            run_bmrapp_gpu<Criteria>(f, q, dir))
+            bmrapp_gpu<Criteria>(f, q, dir).js_)
       << name(dir);
 }
 
@@ -1558,12 +1560,14 @@ TEST(bmrap, gpu_mc_matches_cpu_mc) {
   auto const f = fixture{};
   auto const q = f.make_query();
   EXPECT_EQ(
-      run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, false),
-      run_bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, true));
-  EXPECT_EQ(run_bmrapp_gpu<routing::arr_non_transit_criteria>(
-                f, q, direction::kForward, false),
-            run_bmrapp_gpu<routing::arr_non_transit_criteria>(
-                f, q, direction::kForward, true));
+      bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, false).js_,
+      bmrapp_gpu<routing::arr_criteria>(f, q, direction::kForward, true).js_);
+  EXPECT_EQ(bmrapp_gpu<routing::arr_non_transit_criteria>(
+                f, q, direction::kForward, false)
+                .js_,
+            bmrapp_gpu<routing::arr_non_transit_criteria>(
+                f, q, direction::kForward, true)
+                .js_);
 }
 
 // The four (arriveBy x extension side) cases on the device, the mc phases on
@@ -1575,8 +1579,9 @@ TEST(bmrap, gpu_extension_cases_match_cpu) {
     auto const q = extend_query(f, c);
     auto const cpu = bmrapp<routing::arr_non_transit_criteria>(f, q, c.dir_);
     for (auto const gpu_mc : {false, true}) {
-      EXPECT_EQ(cpu.js_, run_bmrapp_gpu<routing::arr_non_transit_criteria>(
-                             f, q, c.dir_, gpu_mc))
+      EXPECT_EQ(cpu.js_, bmrapp_gpu<routing::arr_non_transit_criteria>(
+                             f, q, c.dir_, gpu_mc)
+                             .js_)
           << c.name_ << ", gpu_mc=" << gpu_mc;
     }
   }
@@ -1584,3 +1589,117 @@ TEST(bmrap, gpu_extension_cases_match_cpu) {
 
 #undef SKIP_WITHOUT_GPU
 #endif
+
+// ---------------------------------------------------------------------------
+// transfer time settings
+// ---------------------------------------------------------------------------
+// Non-default settings (adjusted_transfer_time()) reach every phase: the
+// engines' transfer buffers, the reach matrices (sub_transfer), the bounds'
+// footpath slack and the guide's catchability. The fixture's tightest
+// transfers leave 10 minutes at stops with the default 2: settings up to the
+// limit find the default journeys, past it those transfers are gone (longer
+// ones remain). Per setting, on the plain
+// windows and the four extension cases, BMRAPP on the CPU must be the
+// restricted range mcraptor set and contain every plain raptor journey, and
+// the device (mc phases on the CPU and on the device, and plain raptor) must
+// agree with the CPU.
+namespace {
+
+struct tts_case {
+  routing::transfer_time_settings tts_;
+  bool as_default_;  // the 10-minute transfers stay
+  char const* name_;
+};
+
+std::vector<tts_case> tts_cases() {
+  return {
+      {{.default_ = false}, true, "factor 1, not default"},
+      {{.default_ = false, .factor_ = 2.0F}, true, "factor 2"},
+      {{.default_ = false, .min_transfer_time_ = duration_t{10}},
+       true,
+       "min 10 (at the limit)"},
+      {{.default_ = false, .factor_ = 5.0F}, true, "factor 5 (at the limit)"},
+      {{.default_ = false, .min_transfer_time_ = duration_t{11}},
+       false,
+       "min 11"},
+      {{.default_ = false, .additional_time_ = duration_t{9}},
+       false,
+       "additional 9"},
+  };
+}
+
+#if defined(NIGIRI_CUDA)
+std::vector<tuple_t> run_gpu_raptor(fixture const& f,
+                                    routing::query q,
+                                    direction const dir) {
+  auto ss = routing::search_state{};
+  auto gtt = routing::gpu::gpu_timetable{f.tt_};
+  auto as = routing::gpu::gpu_raptor_state{gtt};
+  return tuples(
+      *(routing::raptor_search(f.tt_, nullptr, ss, as, std::move(q), dir)
+            .journeys_));
+}
+#endif
+
+template <typename Criteria, typename McState>
+void expect_tts_consistent(fixture const& f,
+                           routing::query const& q,
+                           direction const dir,
+                           bool const as_default,
+                           std::string const& tag) {
+  auto const r = bmrapp<Criteria>(f, q, dir);
+  ASSERT_FALSE(r.js_.empty()) << tag;
+  // the guided forward rerun finds each mc pong journey's earliest legs
+  EXPECT_EQ(0U, r.stats_.at("bmrapp_unrealized")) << tag;
+
+  // the restricted set over the window the search settled
+  auto settled = q;
+  settled.start_time_ = r.scanned_;
+  settled.min_connection_count_ = 0U;
+  EXPECT_EQ(restricted_reference<McState>(f, settled, dir), r.js_) << tag;
+
+  // plain raptor: J_A, each of its journeys is its own A(J)
+  auto const plain = reference<routing::raptor_state>(f, settled, dir).js_;
+  expect_subset(r.js_, plain, tag.c_str());
+  auto by_default = settled;
+  by_default.transfer_time_settings_ = {};
+  EXPECT_EQ(as_default,
+            plain == reference<routing::raptor_state>(f, by_default, dir).js_)
+      << tag << ": the setting does not do what the fixture expects";
+
+#if defined(NIGIRI_CUDA)
+  if (routing::gpu::gpu_available()) {
+    for (auto const gpu_mc : {false, true}) {
+      auto const g = bmrapp_gpu<Criteria>(f, q, dir, gpu_mc);
+      EXPECT_EQ(r.js_, g.js_) << tag << ", gpu_mc=" << gpu_mc;
+      EXPECT_EQ(0U, g.stats_.at("bmrapp_unrealized"))
+          << tag << ", gpu_mc=" << gpu_mc;
+    }
+    EXPECT_EQ(plain, run_gpu_raptor(f, settled, dir)) << tag << ", gpu raptor";
+  }
+#endif
+}
+
+}  // namespace
+
+TEST(bmrap, adjusted_transfer_times) {
+  auto const f = fixture{};
+  for (auto const& t : tts_cases()) {
+    auto const run = [&](routing::query q, direction const dir,
+                         std::string const& what) {
+      q.transfer_time_settings_ = t.tts_;
+      auto const tag = fmt::format("{}, {}", t.name_, what);
+      expect_tts_consistent<routing::arr_criteria, routing::mcraptor_state>(
+          f, q, dir, t.as_default_, tag);
+      expect_tts_consistent<routing::arr_non_transit_mode_switches_criteria,
+                            routing::mcraptor_non_transit_mode_switches_state>(
+          f, q, dir, t.as_default_, tag + ", composed");
+    };
+    for (auto const dir : kDirs) {
+      run(f.make_query(dir), dir, name(dir));
+    }
+    for (auto const& c : all_extend_cases()) {
+      run(extend_query(f, c), c.dir_, c.name_);
+    }
+  }
+}
