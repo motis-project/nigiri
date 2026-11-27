@@ -20,11 +20,13 @@ struct query_state {
   query_state(timetable const& tt, tb_data const& tbd)
       : tbd_{tbd}, r_{tt, tbd} {
     t_min_.fill(unixtime_t::max());
-    q_n_.q_.reserve(10'000'000);
+    q_n_.q_.reserve(1024);
     end_reachable_.resize(tbd.segment_transfers_.size());
   }
 
   void reset() {
+    t_min_.fill(unixtime_t::max());
+    dist_to_dest_.clear();
     utl::fill(parent_, queue_entry::kNoParent);
     r_.reset();
     q_n_.reset();
