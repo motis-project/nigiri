@@ -108,6 +108,10 @@ struct raptor_state {
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
+  std::vector<std::uint16_t> route_min_lb_;
+  std::vector<std::uint32_t> route_lb_epoch_;
+  std::vector<delta_t> route_best_arr_;
+  std::uint32_t route_lb_gen_{0U};
   bitvec rt_transport_mark_;
 };
 

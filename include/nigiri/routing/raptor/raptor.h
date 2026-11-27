@@ -30,7 +30,8 @@ enum class search_mode { kOneToOne, kOneToAll };
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          bool RouteLb = true>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -101,6 +102,7 @@ struct raptor {
         dist_to_end_{dist_to_dest},
         td_dist_to_end_{td_dist_to_dest},
         lb_{lb},
+        route_lb_gen_{++state.route_lb_gen_},
         via_stops_{via_stops},
         base_{base},
         bounds_{std::as_const(state_).template get_bounds<Vias>()},
@@ -250,6 +252,30 @@ struct raptor {
         update_time_at_dest(k, round_times_[k][i][Vias]);
       });
 
+      if constexpr (kUseLowerBounds && RouteLb) {
+        route_lb_active_ = false;
+        state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+          if (route_lb_active_) {
+            return;
+          }
+          auto t = kInvalid;
+          for (auto v = 0U; v != Vias + 1; ++v) {
+            t = get_best(t, round_times_[k - 1][i][v]);
+          }
+          if (t == kInvalid) {
+            return;
+          }
+          auto const lb = get_lb(static_cast<std::uint32_t>(i));
+          if (lb == kUnreachable ||
+              !is_better_loose(t + dir(lb), time_at_dest_[k])) {
+            route_lb_active_ = true;
+          }
+        });
+        if (route_lb_active_) {
+          utl::fill(state_.route_best_arr_, kInvalid);
+        }
+      }
+
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
         auto const l = location_idx_t{i};
@@ -264,6 +290,14 @@ struct raptor {
         for (auto const& r : static_routes(tt_, Rt ? rtt_ : nullptr, l)) {
           any_marked = true;
           state_.route_mark_.set(to_idx(r), true);
+          if constexpr (kUseLowerBounds && RouteLb) {
+            if (route_lb_active_) {
+              auto& a = state_.route_best_arr_[to_idx(r)];
+              for (auto v = 0U; v != Vias + 1; ++v) {
+                a = get_best(a, round_times_[k - 1][i][v]);
+              }
+            }
+          }
         }
       });
 
@@ -582,6 +616,26 @@ private:
         }
       }
 
+      if constexpr (kUseLowerBounds && RouteLb) {
+        auto const a =
+            route_lb_active_ ? state_.route_best_arr_[to_idx(r)] : kInvalid;
+        if (a != kInvalid) {
+          if (state_.route_lb_epoch_[to_idx(r)] != route_lb_gen_) {
+            auto m = std::numeric_limits<std::uint16_t>::max();
+            for (auto const s : tt_.route_location_seq_[r]) {
+              m = std::min(m, get_lb(to_idx(stop{s}.location_idx())));
+            }
+            state_.route_min_lb_[to_idx(r)] = m;
+            state_.route_lb_epoch_[to_idx(r)] = route_lb_gen_;
+          }
+          auto const m = state_.route_min_lb_[to_idx(r)];
+          if (m != std::numeric_limits<std::uint16_t>::max() &&
+              !is_better_loose(a + dir(m), time_at_dest_[k])) {
+            ++stats_.route_update_prevented_by_lower_bound_;
+            return;
+          }
+        }
+      }
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
 
@@ -1650,6 +1704,8 @@ private:
   std::vector<std::uint16_t> const& dist_to_end_;
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   std::vector<std::uint16_t> const& lb_;
+  std::uint32_t route_lb_gen_;
+  bool route_lb_active_{true};
   std::vector<via_stop> const& via_stops_;
   std::array<delta_t, kMaxTransfers + 2> time_at_dest_;
   day_idx_t base_;
