@@ -1171,7 +1171,7 @@ struct raptor_impl {
   __device__ __forceinline__ bool bound_prunes(unsigned const k,
                                                std::uint32_t const l,
                                                delta_t const t) {
-    if (!has_bounds_) {
+    if (bm_bounds_.empty()) {
       return false;
     }
     if (k > bounds_budget_) {
@@ -1185,18 +1185,12 @@ struct raptor_impl {
 
   // as raptor::update_time_at_dest()
   __device__ void update_time_at_dest(unsigned const k, delta_t const t) {
-    auto relaxed = t;
-    if (relax_on_) {
-      auto const travel = static_cast<double>(dir(t - relax_origin_));
-      if (travel > 0.0) {
-        auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
-        auto const capped = extra < relax_floor_ ? relax_floor_
-                            : extra > relax_cap_ ? relax_cap_
-                                                 : extra;
-        relaxed = clamp(static_cast<int>(relax_origin_) +
-                        dir(static_cast<int>(::llround(travel + capped))));
-      }
-    }
+    auto const travel = static_cast<double>(dir(t - relax_origin_));
+    auto const relaxed =
+        !relax_on_ || travel <= 0.0
+            ? t
+            : clamp(static_cast<int>(relax_origin_) +
+                    dir(static_cast<int>(::llround(relax_arr(travel)))));
     for (auto i = k; i != max_transfers_ + 1U; ++i) {
       time_at_dest_.update_min(i, relaxed);
     }
@@ -1211,15 +1205,10 @@ struct raptor_impl {
   cuda::std::span<delta_t const> bm_bounds_{};
   std::uint32_t bounds_n_locations_{0U};
   std::uint8_t bounds_budget_{0U};
-  bool has_bounds_{false};
   // the starts' round (staggered runs)
   std::uint8_t start_round_{0U};
   // relaxed target pruning, see update_time_at_dest()
   delta_t relax_origin_{0};
-  double relax_factor_{1.0};
-  double relax_floor_{0.0};
-  double relax_cap_{0.0};
-  int relax_add_{0};
   bool relax_on_{false};
 
   std::uint32_t* any_marked_;

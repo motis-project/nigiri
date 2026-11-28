@@ -346,12 +346,6 @@ gpu_mcraptor_state* gpu_raptor_state::try_mc_state() {
   return impl_->mc_state_.get();
 }
 
-gpu_mcraptor_state& gpu_raptor_state::mc_state() {
-  auto* const s = try_mc_state();
-  utl::verify(s != nullptr, "gpu_raptor_state: no device mcraptor state");
-  return *s;
-}
-
 template <direction SearchDir, bool WithBounds>
 gpu_raptor<SearchDir, WithBounds>::gpu_raptor(
     timetable const& tt,
@@ -615,7 +609,7 @@ __global__ void reconstruct_kernel(location_idx_t const* const dest_list,
   r.reconstruct_journey(dest_list[tid / end_k], k, &out[tid]);
 }
 
-// reach_matrix() of bmrap_common.h on the device
+// reach_matrix() of bmrap_profile.cc on the device
 template <direction SearchDir>
 __global__ void reach_bounds_kernel(device_times<SearchDir, 1U> round_times,
                                     device_timetable tt,
@@ -629,7 +623,7 @@ __global__ void reach_bounds_kernel(device_times<SearchDir, 1U> round_times,
   for (auto l = get_global_thread_id(); l < n_locations;
        l += get_global_stride()) {
     auto const li = location_idx_t{l};
-    // as bmrap_detail::has_reach_bound()
+    // as has_reach_bound() (bmrap_profile.cc)
     if (l >= tt.n_locations_ ||
         tt.transfer_time_[li].count() == kNoTransferAllowed.count()) {
       for (auto i = 0U; i <= budget; ++i) {
@@ -741,22 +735,9 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
   auto const with_td_fps = rt_active && has_profile_td_footpaths(prf_idx_) &&
                            gpu_rtt_->impl_->has_td_fps_[prf_idx_];
   auto r = raptor_impl<SearchDir, WithBounds>{
-      .bm_bounds_ = bm_bounds_ != nullptr
-                        ? cuda::std::span<delta_t const>{bm_bounds_->device_,
-                                                         bm_bounds_->size()}
-                        : cuda::std::span<delta_t const>{},
-      .bounds_n_locations_ =
-          bm_bounds_ != nullptr ? bm_bounds_->n_locations_ : 0U,
-      .bounds_budget_ =
-          bm_bounds_ != nullptr ? bm_bounds_->budget_ : std::uint8_t{0U},
-      .has_bounds_ = bm_bounds_ != nullptr,
       .start_round_ = start_round_,
       .relax_origin_ =
           relax_on_ ? unix_to_delta(base(), relax_origin_) : delta_t{0},
-      .relax_factor_ = relax_factor_,
-      .relax_floor_ = relax_floor_,
-      .relax_cap_ = relax_cap_,
-      .relax_add_ = relax_add_,
       .relax_on_ = relax_on_,
       .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .done_ = thrust::raw_pointer_cast(s.done_.data()),
@@ -807,6 +788,11 @@ void gpu_raptor<SearchDir, WithBounds>::execute(
   if constexpr (WithBounds) {
     r.bounds_ = bounds_;
     r.bounds_last_k_ = bounds_last_k_;
+  }
+  if (bm_bounds_ != nullptr) {
+    r.bm_bounds_ = {bm_bounds_->device_, bm_bounds_->size()};
+    r.bounds_n_locations_ = bm_bounds_->n_locations_;
+    r.bounds_budget_ = bm_bounds_->budget_;
   }
 
   // staggered runs (as raptor::execute()): round k in slot k + start_round_
@@ -1076,20 +1062,6 @@ void gpu_raptor<SearchDir, WithBounds>::set_bounds(bmrap_bounds const* b) {
   utl::verify(in_slot(0U) || in_slot(1U),
               "bmrap bounds: not (or no longer) in this state's reach slot");
   bm_bounds_ = b;
-}
-
-template <direction SearchDir, bool WithBounds>
-void gpu_raptor<SearchDir, WithBounds>::set_dest_relax(unixtime_t const origin,
-                                                       double const factor,
-                                                       int const add_minutes,
-                                                       double const floor_min,
-                                                       double const cap_min) {
-  relax_origin_ = origin;
-  relax_factor_ = factor;
-  relax_add_ = add_minutes;
-  relax_cap_ = cap_min;
-  relax_floor_ = std::min(floor_min, cap_min);
-  relax_on_ = true;
 }
 
 bool gpu_available() {

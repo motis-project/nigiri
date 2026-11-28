@@ -44,7 +44,6 @@ struct raptor {
   };
 
   static constexpr bool kUseLowerBounds = true;
-  static constexpr bool kNeedsLbWhenBounded = false;
 
   u8_minutes get_transfer_time(location_idx_t const l) const {
     return routing::get_transfer_time(tt_, Rt ? rtt_ : nullptr, l);
@@ -204,17 +203,8 @@ struct raptor {
 
   // BM-RAPTOR stage 1: target pruning relaxed by the arrival slack (as
   // anchor_deadline()), so the round times are a valid tau_arr^->(v, i)
-  void set_dest_relax(
-      unixtime_t const origin,
-      double const factor,
-      int const add_minutes,
-      double const floor_min = 0.0,
-      double const cap_min = std::numeric_limits<double>::infinity()) {
+  void set_dest_relax(unixtime_t const origin) {
     relax_origin_ = unix_to_delta(base(), origin);
-    relax_factor_ = factor;
-    relax_add_ = add_minutes;
-    relax_cap_ = cap_min;
-    relax_floor_ = std::min(floor_min, cap_min);
     relax_on_ = true;
   }
 
@@ -489,6 +479,19 @@ struct raptor {
 private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
+  }
+
+  // t worse than tau_arr^-> (see set_bounds())?
+  bool bound_prunes(unsigned const k,
+                    std::uint32_t const l,
+                    delta_t const t) const {
+    if (bm_bounds_ == nullptr) {
+      return false;
+    }
+    if (k > bm_bounds_->budget_) {
+      return true;
+    }
+    return !is_better_or_eq(t, bm_bounds_->at(bm_bounds_->budget_ - k, l));
   }
 
   std::uint16_t get_lb(std::uint32_t const i) const {
@@ -1687,20 +1690,12 @@ private:
     if constexpr (SearchMode == search_mode::kOneToAll) {
       return;
     }
-    auto const relaxed = [&]() -> delta_t {
-      if (!relax_on_) {
-        return t;
-      }
-      auto const travel = static_cast<double>(dir(t - relax_origin_));
-      if (travel <= 0.0) {
-        return t;
-      }
-      // as relax_arr()
-      auto const extra = travel * (relax_factor_ - 1.0) + relax_add_;
-      return clamp(static_cast<int>(relax_origin_) +
-                   dir(static_cast<int>(std::llround(
-                       travel + std::clamp(extra, relax_floor_, relax_cap_)))));
-    }();
+    auto const travel = static_cast<double>(dir(t - relax_origin_));
+    auto const relaxed =
+        !relax_on_ || travel <= 0.0
+            ? t
+            : clamp(static_cast<int>(relax_origin_) +
+                    dir(static_cast<int>(std::llround(relax_arr(travel)))));
     for (auto i = k; i != time_at_dest_.size(); ++i) {
       time_at_dest_[i] = get_best(time_at_dest_[i], relaxed);
     }
@@ -1716,26 +1711,10 @@ private:
   bitvec end_reachable_;
   std::span<std::array<delta_t, Vias + 1>> tmp_;
   std::span<std::array<delta_t, Vias + 1>> best_;
-  bool bound_prunes(unsigned const k,
-                    std::uint32_t const l,
-                    delta_t const t) const {
-    if (bm_bounds_ == nullptr) {
-      return false;
-    }
-    if (k > bm_bounds_->budget_) {
-      return true;
-    }
-    return !is_better_or_eq(t, bm_bounds_->at(bm_bounds_->budget_ - k, l));
-  }
-
   flat_matrix_view<std::array<delta_t, Vias + 1>> round_times_;
   unsigned start_round_{0U};
   bmrap_bounds const* bm_bounds_{nullptr};
-  delta_t relax_origin_{0};
-  double relax_factor_{1.0};
-  int relax_add_{0};
-  double relax_floor_{0.0};
-  double relax_cap_{std::numeric_limits<double>::infinity()};
+  delta_t relax_origin_{0};  // see set_dest_relax()
   bool relax_on_{false};
   bitvec const& is_dest_;
   std::array<bitvec, kMaxVias> const& is_via_;

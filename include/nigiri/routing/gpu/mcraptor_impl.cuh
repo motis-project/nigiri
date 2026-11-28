@@ -531,7 +531,7 @@ struct mcraptor_impl {
                                                std::uint32_t const l,
                                                delta_t const t,
                                                int const slack = 0) {
-    if (!has_bounds_) {
+    if (bounds_.empty()) {
       return false;
     }
     // the CURRENT start time's trip budget limits the rounds, the row depends
@@ -1748,7 +1748,6 @@ struct mcraptor_impl {
   std::uint32_t bounds_n_locations_{0U};
   std::uint8_t bounds_budget_{0U};
   bool bounds_staggered_{false};  // see bmrap_bounds::staggered_
-  bool has_bounds_{false};
   unsigned cur_budget_{0U};  // this start time's trip budget
 
   device_bitvec<std::uint64_t const> is_dest_;

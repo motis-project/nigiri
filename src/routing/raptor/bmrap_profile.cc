@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <span>
 #include <variant>
 #include <vector>
 
@@ -13,24 +14,24 @@
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/raptor/bmrap_common.h"
-#include "nigiri/routing/raptor/bmrap_filters.h"
 #include "nigiri/routing/raptor/mcraptor.h"
 #include "nigiri/routing/raptor/pong.h"
 #include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/raptor_search.h"
+#include "nigiri/routing/start_times.h"
 #include "nigiri/special_stations.h"
+#if defined(NIGIRI_CUDA)
+#include "nigiri/routing/gpu/mcraptor.h"
+#include "nigiri/routing/gpu/raptor.h"
+#endif
 
 namespace nigiri::routing {
 
 namespace {
 
-using namespace bmrap_detail;
-
-bool same_criteria(journey const& a, journey const& b) {
-  return a.transfers_ == b.transfers_ && a.criteria_cost_ == b.criteria_cost_ &&
-         a.criteria_avoided_modes_ == b.criteria_avoided_modes_ &&
-         a.criteria_mode_switches_ == b.criteria_mode_switches_;
-}
 using clk = std::chrono::steady_clock;
+
+constexpr auto const kVias = via_offset_t{0U};
 
 struct stopwatch {
   void lap(clk::duration& acc) {
@@ -41,16 +42,332 @@ struct stopwatch {
   clk::time_point t_{clk::now()};
 };
 
-// fn(arrival, first, last) per run of equal dest_time_ (js sorted by it)
-template <typename Journeys, typename Fn>
-void for_each_arrival_group(Journeys& js, Fn&& fn) {
+// 2-criteria engine of ping, pong and the pruning searches (kOneToAll:
+// compute_bounds() has no destinations; the GPU raptor lacks the mode and
+// serves unchanged)
+template <direction SearchDir,
+          bool Rt,
+          typename AlgoState,
+          search_mode Mode = search_mode::kOneToOne>
+struct scalar_algo {
+  using type = raptor<SearchDir, Rt, kVias, Mode>;
+};
+
+// engine and state of the mc phases
+template <direction SearchDir, typename Criteria, bool GpuMc>
+struct mc_algo {
+  using type = basic_mcraptor<SearchDir, Criteria>;
+  using state = basic_mcraptor_state<Criteria>;
+};
+
+#if defined(NIGIRI_CUDA)
+template <direction SearchDir, bool Rt, search_mode Mode>
+struct scalar_algo<SearchDir, Rt, gpu::gpu_raptor_state, Mode> {
+  using type = gpu::gpu_raptor<SearchDir, false>;
+};
+
+template <direction SearchDir, typename Criteria>
+struct mc_algo<SearchDir, Criteria, true> {
+  using type = gpu::gpu_mcraptor<SearchDir, Criteria>;
+  using state = gpu::gpu_mcraptor_state;
+};
+#endif
+
+// incl. rt virtual locations
+std::uint32_t n_search_locations(timetable const& tt, rt_timetable const* rtt) {
+  return rtt == nullptr ? tt.n_locations() : rtt->n_locations();
+}
+
+day_idx_t base_day_of(timetable const& tt, unixtime_t const t) {
+  return day_idx_t{std::chrono::duration_cast<date::days>(
+                       std::chrono::round<std::chrono::days>(t) -
+                       tt.internal_interval().from_)
+                       .count()};
+}
+
+std::array<unixtime_t, kMaxTransfers + 2U> all_rounds(unixtime_t const t) {
+  auto a = std::array<unixtime_t, kMaxTransfers + 2U>{};
+  a.fill(t);
+  return a;
+}
+
+// Bounds the arrival relative to the step, so it looks past max_travel_time
+// (the next useful departure can be hours away); travel time is filtered on
+// the results.
+template <direction SearchDir>
+unixtime_t worst_at_dest(query const& q, unixtime_t const t) {
+  return t + (SearchDir == direction::kForward ? 1 : -1) *
+                 std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
+}
+
+std::uint8_t trips(journey const& j) {
+  return static_cast<std::uint8_t>(j.transfers_ + 1U);
+}
+
+bool same_criteria(journey const& a, journey const& b) {
+  return a.transfers_ == b.transfers_ && a.criteria_cost_ == b.criteria_cost_ &&
+         a.criteria_avoided_modes_ == b.criteria_avoided_modes_ &&
+         a.criteria_mode_switches_ == b.criteria_mode_switches_;
+}
+
+// The engines keep references to all of these.
+template <typename Algo, typename State>
+Algo make_engine(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    State& state,
+    query const& q,
+    day_idx_t const base,
+    bitvec& is_dest,
+    std::vector<std::uint16_t> const& dist,
+    hash_map<location_idx_t, std::vector<td_offset>> const& td_dest,
+    std::vector<std::uint16_t> const& lb) {
+  static auto const kNoVias = std::array<bitvec, kMaxVias>{};
+  static auto const kNoViaStops = std::vector<via_stop>{};
+  return Algo{tt,
+              rtt,
+              state,
+              is_dest,
+              kNoVias,
+              dist,
+              td_dest,
+              lb,
+              kNoViaStops,
+              base,
+              q.allowed_claszes_,
+              q.require_bike_transport_,
+              q.require_car_transport_,
+              q.prf_idx_ == 2U,
+              q.no_compulsory_reservation_,
+              q.transfer_time_settings_,
+              q.prf_idx_,
+              mc_context{.avoided_ = q.avoided_claszes_}};
+}
+
+// the next start time of `algo`: q's starts at t (q flipped for the pongs)
+template <typename Algo>
+void seed(Algo& algo,
+          timetable const& tt,
+          rt_timetable const* rtt,
+          query const& q,
+          direction const dir,
+          bool const use_start_footpaths,
+          unixtime_t const t,
+          std::vector<start>& starts) {
+  starts.clear();
+  get_starts(dir, tt, rtt, t, q.start_, q.td_start_, q.via_stops_,
+             q.max_start_offset_, q.start_match_mode_, use_start_footpaths,
+             starts, false, q.prf_idx_, q.transfer_time_settings_);
+  algo.next_start_time();
+  for (auto const& s : starts) {
+    algo.add_start(s.stop_, s.time_at_stop_);
+  }
+}
+
+// js sorted by arrival, then fn(arrival, group, most transfers) per arrival
+template <direction SearchDir, typename Fn>
+void for_each_arrival_group(pareto_set<journey>& js, Fn&& fn) {
+  utl::sort(js, [](journey const& a, journey const& b) {
+    return is_better<SearchDir>(a.dest_time_, b.dest_time_);
+  });
   for (auto it = begin(js); it != end(js);) {
     auto const arr = it->dest_time_;
     auto const last = std::find_if(
         it, end(js), [&](journey const& j) { return j.dest_time_ != arr; });
-    fn(arr, it, last);
+    auto const group = std::span<journey const>{it, last};
+    fn(arr, group,
+       utl::max_element(group, [](journey const& a, journey const& b) {
+         return a.transfers_ < b.transfers_;
+       })->transfers_);
     it = last;
   }
+}
+
+// Keeps `anchors` a (departure, arrival, trips) Pareto set: a dominated anchor
+// must not be an A(J).
+template <direction SearchDir>
+void add_anchor(std::vector<anchor>& anchors, anchor const& a) {
+  auto const dominates = [](anchor const& x, anchor const& y) {
+    return !is_better<SearchDir>(x.anchored_, y.anchored_) &&
+           !is_better<SearchDir>(y.found_, x.found_) && x.trips_ <= y.trips_;
+  };
+  if (utl::none_of(anchors, [&](anchor const& o) { return dominates(o, a); })) {
+    utl::erase_if(anchors, [&](anchor const& o) { return dominates(a, o); });
+    anchors.push_back(a);
+  }
+}
+
+// A window's anchor set is truncated at its far end t: A(J) of a departure
+// near it would depend on the window size. The anchors past the boundary that
+// can be A(J) are the (arrival, trips) front of a ping from the boundary,
+// re-anchored by a pong.
+template <direction SearchDir, bool Rt, typename AlgoState>
+void close_anchor_profile(timetable const& tt,
+                          rt_timetable const* rtt,
+                          query const& q,
+                          unixtime_t const t,
+                          AlgoState& state,
+                          std::vector<anchor>& anchors) {
+  constexpr auto const kDir =
+      duration_t{SearchDir == direction::kForward ? 1 : -1};
+  auto const base = base_day_of(tt, t);
+  auto qf = q;
+  qf.flip_dir();
+  auto fwd_is_dest = bitvec{};
+  auto fwd_dist = std::vector<std::uint16_t>{};
+  collect_destinations(tt, rtt, q.destination_, q.dest_match_mode_, fwd_is_dest,
+                       fwd_dist);
+  auto bwd_is_dest = bitvec{};
+  auto bwd_dist = std::vector<std::uint16_t>{};
+  collect_destinations(tt, rtt, qf.destination_, qf.dest_match_mode_,
+                       bwd_is_dest, bwd_dist);
+  auto const lb = std::vector<std::uint16_t>(n_search_locations(tt, rtt), 0U);
+  auto ping = make_engine<typename scalar_algo<SearchDir, Rt, AlgoState>::type>(
+      tt, rtt, state, q, base, fwd_is_dest, fwd_dist, q.td_dest_, lb);
+  auto pong =
+      make_engine<typename scalar_algo<flip(SearchDir), Rt, AlgoState>::type>(
+          tt, rtt, state, q, base, bwd_is_dest, bwd_dist, qf.td_dest_, lb);
+
+  auto starts = std::vector<start>{};
+  auto front = pareto_set<journey>{};
+  ping.reset_arrivals();
+  seed(ping, tt, rtt, q, SearchDir, q.use_start_footpaths_, t, starts);
+  ping.execute(t, q.max_transfers_, all_rounds(worst_at_dest<SearchDir>(q, t)),
+               front);
+
+  auto tight = pareto_set<journey>{};
+  pong.reset_arrivals();
+  for_each_arrival_group<SearchDir>(front, [&](unixtime_t const arr, auto,
+                                               std::uint8_t const max_tr) {
+    seed(pong, tt, rtt, qf, flip(SearchDir),
+         qf.start_match_mode_ != location_match_mode::kIntermodal, arr, starts);
+    pong.execute(arr, max_tr, all_rounds(t - kDir), tight);
+  });
+  for (auto const& j : tight) {
+    add_anchor<SearchDir>(anchors, {j.dest_time_, j.start_time_, trips(j)});
+  }
+}
+
+// Banned same-stop transfers leave no post-transfer time to bound walk-ins by,
+// real-time locations take their parent's transfer time: neither prunes.
+bool has_reach_bound(timetable const& tt, std::uint32_t const l) {
+  return l < tt.n_locations() &&
+         tt.locations_.transfer_time_[location_idx_t{l}] != kNoTransferAllowed;
+}
+
+// tau_arr^->(v, i) from a finished search's round times: row i is the prefix
+// over rounds <= i ("at most i trips"). `sub_transfer` takes the transfer
+// buffer off the post-transfer times once, so a forward and a backward matrix
+// meet without demanding it twice. A device-built matrix stays on the device
+// unless `host_copy`.
+template <direction PruneDir, typename AlgoState, typename Algo>
+bmrap_bounds reach_matrix(timetable const& tt,
+                          query const& q,
+                          AlgoState& state,
+                          [[maybe_unused]] Algo& algo,
+                          std::uint8_t const budget,
+                          bool const sub_transfer,
+                          [[maybe_unused]] bool const host_copy) {
+  auto bounds = bmrap_bounds{};
+#if defined(NIGIRI_CUDA)
+  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
+    algo.build_reach_bounds(bounds, budget, sub_transfer, host_copy);
+    return bounds;
+  } else
+#endif
+  {
+    constexpr auto const kInvalid = kInvalidDelta<PruneDir>;
+    auto const round_times = state.template get_round_times<kVias>();
+    // incl. rt virtual locations
+    auto const n_locations = state.n_locations_;
+    bounds.resize(n_locations, budget, kInvalid);
+    for (auto l = 0U; l != n_locations; ++l) {
+      if (!has_reach_bound(tt, l)) {
+        for (auto i = 0U; i <= budget; ++i) {
+          bounds.at(i, l) = kInvalidDelta<flip(PruneDir)>;
+        }
+        continue;
+      }
+      auto const buffer =
+          sub_transfer
+              ? (PruneDir == direction::kForward ? 1 : -1) *
+                    adjusted_transfer_time(
+                        q.transfer_time_settings_,
+                        tt.locations_.transfer_time_[location_idx_t{l}].count())
+              : 0;
+      auto prefix = kInvalid;
+      for (auto i = 0U; i <= budget; ++i) {
+        auto const cur = round_times[i][l][kVias];
+        prefix = is_better<PruneDir>(cur, prefix) ? cur : prefix;
+        bounds.at(i, l) = prefix == kInvalid
+                              ? kInvalid
+                              : static_cast<delta_t>(prefix - buffer);
+      }
+    }
+    return bounds;
+  }
+}
+
+// tau_dep^<-(v, i) (see bound_runs()): the runs are reduced to the front over
+// (deadline, budget) and share one rRAPTOR, whose accumulated maximum is the
+// union. `horizon`: the far end of the main search.
+template <direction SearchDir, bool Rt, typename AlgoState>
+bmrap_bounds compute_bounds(timetable const& tt,
+                            rt_timetable const* rtt,
+                            query const& q,
+                            std::vector<anchor> const& anchors,
+                            day_idx_t const base,
+                            unixtime_t const horizon,
+                            std::uint8_t const budget,
+                            AlgoState& state,
+                            raptor_stats& stats,
+                            bmrap_bounds const* reach,
+                            bool const host_copy) {
+  constexpr auto const kPruneDir = flip(SearchDir);
+
+  // most trips first: a run is redundant if a kept one is at least as loose
+  auto runs = bound_runs<SearchDir>(anchors, horizon, budget);
+  utl::sort(runs, [](bound_run const& a, bound_run const& b) {
+    return a.second != b.second ? a.second > b.second
+                                : is_better<kPruneDir>(a.first, b.first);
+  });
+  auto reduced = std::vector<bound_run>{};
+  for (auto const& x : runs) {
+    if (utl::none_of(reduced, [&](bound_run const& o) {
+          return !is_better<kPruneDir>(x.first, o.first);
+        })) {
+      reduced.push_back(x);
+    }
+  }
+
+  auto is_dest = bitvec{n_search_locations(tt, rtt)};
+  auto const dist_to_dest = std::vector<std::uint16_t>{};
+  auto const td_dist_to_dest =
+      hash_map<location_idx_t, std::vector<td_offset>>{};
+  auto const lb = std::vector<std::uint16_t>(n_search_locations(tt, rtt), 0U);
+  auto r = make_engine<typename scalar_algo<kPruneDir, Rt, AlgoState,
+                                            search_mode::kOneToAll>::type>(
+      tt, rtt, state, q, base, is_dest, dist_to_dest, td_dist_to_dest, lb);
+  r.set_bounds(reach);
+
+  auto qf = q;
+  qf.flip_dir();
+  auto starts = std::vector<start>{};
+  auto results = pareto_set<journey>{};
+  for (auto const& [t, b] : reduced) {
+    // staggered: slot i = "i trips remaining" for every run
+    r.set_start_round(static_cast<unsigned>(budget - b));
+    seed(r, tt, rtt, qf, kPruneDir,
+         qf.start_match_mode_ != location_match_mode::kIntermodal, t, starts);
+    r.execute(t, static_cast<std::uint8_t>(b - 1U), all_rounds(horizon),
+              results);
+  }
+  stats = stats + r.get_stats();
+
+  auto bounds = reach_matrix<kPruneDir>(tt, q, state, r, budget,
+                                        /*sub_transfer=*/false, host_copy);
+  bounds.staggered_ = true;
+  return bounds;
 }
 
 // PROFILE BM-RAPTOR: one single-departure BM-RAPTOR per step of a PONG-style
@@ -63,6 +380,11 @@ void for_each_arrival_group(Journeys& js, Fn&& fn) {
 //   4. mc ping       bounded multicriteria search from the step
 //   5. mc pong       re-anchors each mc journey to its latest departure
 //   5b. realize      forward rerun for the earliest connections
+//
+// Only the ping uses lower bounds: bounded, bound_prunes() is the tighter
+// cutoff. One scalar state serves ping, pong and slacked pong, one mc state all
+// mc phases: they run in sequence, and a phase guided by another's labels reads
+// a copy of them.
 template <direction SearchDir,
           bool Rt,
           typename Criteria,
@@ -73,17 +395,15 @@ routing_result bmrap_profile(
     rt_timetable const* rtt,
     search_state& s_state,
     AlgoState& r_state,
-    basic_mcraptor_state<Criteria>& cpu_mc_state,
+    typename mc_algo<SearchDir, Criteria, GpuMc>::state& mc_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
   constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kDir = duration_t{kFwd ? 1 : -1};
-  using ping_t = typename bmrap_algo_for<SearchDir, Rt, AlgoState>::type;
-  using pong_t = typename bmrap_algo_for<flip(SearchDir), Rt, AlgoState>::type;
-  using mc_ping_for = bmrap_mc_algo_for<SearchDir, Criteria, GpuMc>;
-  using mc_pong_for = bmrap_mc_algo_for<flip(SearchDir), Criteria, GpuMc>;
-  using mc_ping_t = typename mc_ping_for::type;
-  using mc_pong_t = typename mc_pong_for::type;
+  using ping_t = typename scalar_algo<SearchDir, Rt, AlgoState>::type;
+  using pong_t = typename scalar_algo<flip(SearchDir), Rt, AlgoState>::type;
+  using mc_ping_t = typename mc_algo<SearchDir, Criteria, GpuMc>::type;
+  using mc_pong_t = typename mc_algo<flip(SearchDir), Criteria, GpuMc>::type;
 
   q.sanitize(tt);
   utl::verify(mcraptor_supported(q, rtt),
@@ -93,7 +413,7 @@ routing_result bmrap_profile(
   s_state.results_.clear();
 
   auto const is_better = [](auto const a, auto const b) {
-    return bmrap_detail::is_better<SearchDir>(a, b);
+    return routing::is_better<SearchDir>(a, b);
   };
   auto const fastest_direct = get_fastest_direct(tt, q, SearchDir);
   auto const search_interval = std::visit(
@@ -102,12 +422,8 @@ routing_result bmrap_profile(
           [](unixtime_t const t) { return interval<unixtime_t>{t, t}; }},
       q.start_time_);
   auto const base_day =
-      day_idx_t{std::chrono::duration_cast<date::days>(
-                    std::chrono::round<std::chrono::days>(
-                        search_interval.from_ +
-                        ((search_interval.to_ - search_interval.from_) / 2)) -
-                    tt.internal_interval().from_)
-                    .count()};
+      base_day_of(tt, search_interval.from_ +
+                          ((search_interval.to_ - search_interval.from_) / 2));
 
   auto fwd_is_dest = bitvec{};
   auto fwd_dist = std::vector<std::uint16_t>{};
@@ -120,141 +436,70 @@ routing_result bmrap_profile(
   collect_destinations(tt, rtt, qf.destination_, qf.dest_match_mode_,
                        bwd_is_dest, bwd_dist);
 
-  auto fwd_lb = std::vector<std::uint16_t>{};
-  auto bwd_lb = std::vector<std::uint16_t>{};
-  auto lb_time = clk::duration{};
   auto sw = stopwatch{};
-  if constexpr (ping_t::kUseLowerBounds || bounded_needs_lb<mc_ping_t>()) {
-    dijkstra(tt, rtt, q, SearchDir, fwd_lb);
+  auto lb = std::vector<std::uint16_t>{};
+  auto const no_lb = std::vector<std::uint16_t>{};
+  if constexpr (ping_t::kUseLowerBounds) {
+    dijkstra(tt, rtt, q, SearchDir, lb);
   }
-  if constexpr (bounded_needs_lb<pong_t>() || bounded_needs_lb<mc_pong_t>()) {
-    dijkstra(tt, rtt, qf, flip(SearchDir), bwd_lb);
-  }
-  sw.lap(lb_time);
-  auto ms_setup = clk::duration{};
+  auto ms_lb = clk::duration{};
+  sw.lap(ms_lb);
 
-  auto is_via = std::array<bitvec, kMaxVias>{};
-  auto no_via = std::vector<via_stop>{};
-
-  // One scalar state serves ping, pong and slacked pong, one mc state all mc
-  // phases: they run in sequence, and a phase guided by another's labels reads
-  // a copy of them.
-  static_assert(
-      std::is_same_v<typename mc_ping_for::state, typename mc_pong_for::state>);
-  auto& mc_state = [&]() -> typename mc_ping_for::state& {
-    if constexpr (GpuMc) {
-      return r_state.mc_state();
-    } else {
-      return cpu_mc_state;
-    }
-  }();
-
-  auto const make = [&]<typename Algo>(auto& state, bitvec& is_dest,
-                                       std::vector<std::uint16_t>& dist,
-                                       auto const& td_dest,
-                                       std::vector<std::uint16_t>& lb) {
-    return Algo{tt,
-                rtt,
-                state,
-                is_dest,
-                is_via,
-                dist,
-                td_dest,
-                lb,
-                no_via,
-                base_day,
-                q.allowed_claszes_,
-                q.require_bike_transport_,
-                q.require_car_transport_,
-                q.prf_idx_ == 2U,
-                q.no_compulsory_reservation_,
-                q.transfer_time_settings_,
-                q.prf_idx_,
-                mc_context{.avoided_ = q.avoided_claszes_}};
-  };
-  auto ping = make.template operator()<ping_t>(r_state, fwd_is_dest, fwd_dist,
-                                               q.td_dest_, fwd_lb);
-  auto pong = make.template operator()<pong_t>(r_state, bwd_is_dest, bwd_dist,
-                                               qf.td_dest_, bwd_lb);
-  auto mc_ping = make.template operator()<mc_ping_t>(
-      mc_state, fwd_is_dest, fwd_dist, q.td_dest_, fwd_lb);
-  auto mc_pong = make.template operator()<mc_pong_t>(
-      mc_state, bwd_is_dest, bwd_dist, qf.td_dest_, bwd_lb);
+  auto ping = make_engine<ping_t>(tt, rtt, r_state, q, base_day, fwd_is_dest,
+                                  fwd_dist, q.td_dest_, lb);
+  auto pong = make_engine<pong_t>(tt, rtt, r_state, q, base_day, bwd_is_dest,
+                                  bwd_dist, qf.td_dest_, no_lb);
+  auto mc_ping = make_engine<mc_ping_t>(tt, rtt, mc_state, q, base_day,
+                                        fwd_is_dest, fwd_dist, q.td_dest_, lb);
+  auto mc_pong =
+      make_engine<mc_pong_t>(tt, rtt, mc_state, q, base_day, bwd_is_dest,
+                             bwd_dist, qf.td_dest_, no_lb);
   // the starts' walks, as search.h tells the plain engines: td offsets may
   // wait, locations of a start stop are reached by a transfer
   mc_ping.set_td_start(q.td_start_);
   mc_ping.set_start_stops(q.start_, q.start_match_mode_);
   mc_pong.set_td_start(qf.td_start_);
   mc_pong.set_start_stops(qf.start_, qf.start_match_mode_);
-
+  auto ms_setup = clk::duration{};
   sw.lap(ms_setup);
 
   auto prune_stats = raptor_stats{};
   auto all_anchors = std::vector<anchor>{};
   auto n_steps = std::uint64_t{0U};
-  auto n_bound_builds = std::uint64_t{0U};
-  auto n_fwd_bound_builds = std::uint64_t{0U};
+  auto n_anchor_recomputes = std::uint64_t{0U};
+  auto n_mc_pong_skipped = std::uint64_t{0U};
+  auto n_pong_missing = std::uint64_t{0U};
+  auto exit_reason = std::uint64_t{0U};  // 0=cond 2=anchors
   auto ms_ping = clk::duration{};
   auto ms_pong = clk::duration{};
   auto ms_bounds = clk::duration{};
   auto ms_mc = clk::duration{};
   auto ms_mc_pong = clk::duration{};
-  auto ms_recon = clk::duration{};
   auto ms_fwd_bounds = clk::duration{};
   auto ms_range = clk::duration{};
   auto ms_realize = clk::duration{};
   auto fwd_bounds = bmrap_bounds{};
-
-  auto const is_timeout = [&]() {
-    return timeout && (clk::now() - t0) >= *timeout;
-  };
-  // Bounds the arrival relative to the step, so it looks past max_travel_time
-  // (the next useful departure can be hours away); travel time is filtered on
-  // the results.
-  auto const worst_at_dest = [&](unixtime_t const t) {
-    return t + (kFwd ? 1 : -1) *
-                   std::min(q.max_travel_time_ + kMinLookAhead, kMaxTravelTime);
-  };
-  // the arrival slack on the ping's target pruning makes its round times a
-  // valid tau_arr^->(v, i) matrix (paper, Sec. 4.3); clamped as relax_arr()
-  auto const relax_ping = [&](auto& algo, unixtime_t const t) {
-    auto const& sc = get_slack();
-    auto const fixed = sc.arr_fixed_min_ >= 0.0;
-    algo.set_dest_relax(t, fixed ? 1.0 : sc.arr_,
-                        fixed ? static_cast<int>(sc.arr_fixed_min_) : 0,
-                        sc.arr_min_min_, sc.arr_cap_min_);
-  };
+  auto bounds = bmrap_bounds{};
   auto const budget_cap = static_cast<std::uint8_t>(
       std::min<unsigned>(q.max_transfers_ + 1U, kMaxTransfers + 1U));
 
   auto starts = std::vector<start>{};
   auto const seed_fwd = [&](auto& algo, unixtime_t const t) {
-    starts.clear();
-    get_starts(SearchDir, tt, rtt, t, q.start_, q.td_start_, q.via_stops_,
-               q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
-               starts, false, q.prf_idx_, q.transfer_time_settings_);
-    algo.next_start_time();
-    for (auto const& s : starts) {
-      algo.add_start(s.stop_, s.time_at_stop_);
-    }
+    seed(algo, tt, rtt, q, SearchDir, q.use_start_footpaths_, t, starts);
   };
   auto const seed_bwd = [&](auto& algo, unixtime_t const t) {
-    starts.clear();
-    get_starts(flip(SearchDir), tt, rtt, t, qf.start_, qf.td_start_,
-               qf.via_stops_, qf.max_start_offset_, qf.start_match_mode_,
-               qf.start_match_mode_ != location_match_mode::kIntermodal, starts,
-               false, q.prf_idx_, q.transfer_time_settings_);
-    algo.next_start_time();
-    for (auto const& s : starts) {
-      algo.add_start(s.stop_, s.time_at_stop_);
-    }
+    seed(algo, tt, rtt, qf, flip(SearchDir),
+         qf.start_match_mode_ != location_match_mode::kIntermodal, t, starts);
   };
   auto const run_ping = [&](unixtime_t const t) {
     auto results = pareto_set<journey>{};
     ping.reset_arrivals();
-    relax_ping(ping, t);
+    // the arrival slack on the target pruning makes the round times a valid
+    // tau_arr^->(v, i) matrix (paper, Sec. 4.3)
+    ping.set_dest_relax(t);
     seed_fwd(ping, t);
-    ping.execute(t, q.max_transfers_, all_rounds(worst_at_dest(t)), results);
+    ping.execute(t, q.max_transfers_,
+                 all_rounds(worst_at_dest<SearchDir>(q, t)), results);
     return results;
   };
   auto const run_mc_ping =
@@ -278,17 +523,18 @@ routing_result bmrap_profile(
   if (!aligned) {
     sw = stopwatch{};
     auto range_s_state = search_state{};
-    auto const ar = run_anchor_search<SearchDir>(tt, rtt, range_s_state,
-                                                 r_state, q, timeout);
+    auto const ar =
+        raptor_search(tt, rtt, range_s_state, r_state, q, SearchDir, timeout);
     scan_interval = ar.interval_;
     for (auto const& j : *ar.journeys_) {
-      all_anchors.push_back({j.start_time_, j.dest_time_,
-                             static_cast<std::uint8_t>(j.transfers_ + 1U)});
+      add_anchor<SearchDir>(all_anchors,
+                            {j.start_time_, j.dest_time_, trips(j)});
     }
     // a windowed anchor set is truncated at its far end
     if (!all_anchors.empty()) {
-      close_anchor_profile<SearchDir>(tt, rtt, q, scan_interval, r_state,
-                                      all_anchors);
+      close_anchor_profile<SearchDir, Rt>(
+          tt, rtt, q, kFwd ? scan_interval.to_ : scan_interval.from_, r_state,
+          all_anchors);
     }
     sw.lap(ms_range);
   }
@@ -298,28 +544,15 @@ routing_result bmrap_profile(
   auto const end_time =
       kFwd ? scan_interval.to_ : scan_interval.from_ - duration_t{1};
 
-  auto bounds = bmrap_bounds{};
-
-  // Guided searches keep only the labels that join one of the other
-  // direction's labels (copied right after it ran: take_guide()) into one of
-  // the targets. Complete as long as the mc phases project with a zero lower
-  // bound: destination pruning then never cuts a label that can still
-  // complete to a target.
-  static_assert(!bounded_needs_lb<mc_ping_t>() &&
-                !bounded_needs_lb<mc_pong_t>());
-  auto const guided = [&](auto& engine,
-                          std::vector<journey const*> const& targets,
-                          auto&& run) {
-    engine.set_guide(targets);
-    run();
-    engine.set_guide({});
-  };
-
   // ---- 5b. REALIZE ----
   // The mc pong's legs are the latest connections (no slack at any transfer).
   // Forward queries rerun each departure forward, guided by the mc pong's
-  // labels, and splice in the earliest connections; for arriveBy the mc pong
-  // runs forward and already has them.
+  // labels (take_guide()), and splice in the earliest connections; for arriveBy
+  // the mc pong runs forward and already has them. Guided searches keep only
+  // the labels that join one of the other direction's labels into one of the
+  // targets. Complete as long as the mc phases project with a zero lower bound
+  // (they are bounded): destination pruning then never cuts a label that can
+  // still complete to a target.
   auto realized = std::vector<journey>{};
   auto n_realized = std::uint64_t{0U};
   auto n_unrealized = std::uint64_t{0U};
@@ -342,8 +575,9 @@ routing_result bmrap_profile(
         }
       }
       auto fwd = pareto_set<journey>{};
-      guided(mc_ping, targets,
-             [&]() { run_mc_ping(d, max_tr, arr + kDir, fwd); });
+      mc_ping.set_guide(targets);
+      run_mc_ping(d, max_tr, arr + kDir, fwd);
+      mc_ping.set_guide({});
       for (auto& f : fwd) {
         if (!f.is_reconstructed_ && !f.error_) {
           try {
@@ -360,15 +594,11 @@ routing_result bmrap_profile(
       }
     }
   };
-  auto n_mc_pong_skipped = std::uint64_t{0U};
-  auto n_pong_missing = std::uint64_t{0U};
 
   auto anchors = std::vector<anchor>{};
   auto max_trips = std::uint8_t{0U};
   auto budget = std::uint8_t{0U};
   auto anchors_valid_until = std::optional<unixtime_t>{};
-  auto n_anchor_recomputes = std::uint64_t{0U};
-  auto exit_reason = std::uint64_t{0U};  // 0=cond 2=anchors
 
   // In the scan, results have the mc pong's convention (dest_time_ = departure,
   // start_time_ = arrival). The restriction applies when counting, not on
@@ -402,12 +632,12 @@ routing_result bmrap_profile(
   while ((is_better(start_time, end_time) ||
           (aligned && n_results(true) + n_results(false) <
                           2 * static_cast<int>(q.min_connection_count_))) &&
-         tt.external_interval().contains(start_time) && !is_timeout()) {
+         tt.external_interval().contains(start_time) &&
+         !(timeout && (clk::now() - t0) >= *timeout)) {
     // The anchors (and phases 1-3) only go stale once the step passes the
     // earliest anchor departure; steps in between skip them.
-    auto const anchors_stale = !anchors_valid_until.has_value() ||
-                               is_better(*anchors_valid_until, start_time);
-    if (anchors_stale) {
+    if (!anchors_valid_until.has_value() ||
+        is_better(*anchors_valid_until, start_time)) {
       ++n_anchor_recomputes;
 
       if (!aligned) {
@@ -443,93 +673,70 @@ routing_result bmrap_profile(
             tt, q, r_state, ping, trip_budget(max_trips, budget_cap),
             /*sub_transfer=*/true, /*host_copy=*/!GpuMc);
         sw.lap(ms_fwd_bounds);
-        ++n_fwd_bound_builds;
         mc_pong.set_bounds(&fwd_bounds);
       } else {
         // ---- 1. PING ----
         sw = stopwatch{};
         auto ping_results = run_ping(start_time);
         sw.lap(ms_ping);
-        utl::sort(ping_results, [&](journey const& a, journey const& b) {
-          return is_better(a.dest_time_, b.dest_time_);
-        });
 
         // before the pong overwrites the round times; sized by the ping's
         // trips (the pong moves departures, not trip counts)
         auto ping_trips = std::uint8_t{0U};
         for (auto const& j : ping_results) {
-          ping_trips = std::max(ping_trips,
-                                static_cast<std::uint8_t>(j.transfers_ + 1U));
+          ping_trips = std::max(ping_trips, trips(j));
         }
         fwd_bounds = reach_matrix<SearchDir>(
             tt, q, r_state, ping, trip_budget(ping_trips, budget_cap),
             /*sub_transfer=*/true, /*host_copy=*/!GpuMc);
         sw.lap(ms_fwd_bounds);
-        ++n_fwd_bound_builds;
         mc_pong.set_bounds(&fwd_bounds);
         pong.set_bounds(&fwd_bounds);
 
         // ---- 2. PONG ----
         auto tight = pareto_set<journey>{};
         pong.reset_arrivals();
-        for_each_arrival_group(ping_results, [&](unixtime_t const arr,
-                                                 auto const first,
-                                                 auto const last) {
-          auto const max_tr =
-              std::max_element(first, last,
-                               [](journey const& a, journey const& b) {
-                                 return a.transfers_ < b.transfers_;
-                               })
-                  ->transfers_;
-          auto const loosest =
-              std::min_element(first, last,
-                               [&](journey const& a, journey const& b) {
-                                 return is_better(a.start_time_, b.start_time_);
-                               })
-                  ->start_time_;
-          seed_bwd(pong, arr);
-          pong.execute(arr, max_tr, all_rounds(loosest - kDir), tight);
-          // Each ping journey has its latest departure (pong_search throws).
-          // A miss only costs this step its anchor: log and count it.
-          for (auto it = first; it != last; ++it) {
-            if (utl::none_of(tight, [&](journey const& t) {
-                  return t.transfers_ == it->transfers_ && t.start_time_ == arr;
-                })) {
-              ++n_pong_missing;
-              log(log_lvl::error, "bmrap_profile",
-                  "no pong for transfers={}, start_time={} found",
-                  it->transfers_, arr);
-            }
-          }
-        });
+        for_each_arrival_group<SearchDir>(
+            ping_results,
+            [&](unixtime_t const arr, std::span<journey const> const group,
+                std::uint8_t const max_tr) {
+              auto const loosest =
+                  utl::min_element(group, [&](journey const& a,
+                                              journey const& b) {
+                    return is_better(a.start_time_, b.start_time_);
+                  })->start_time_;
+              seed_bwd(pong, arr);
+              pong.execute(arr, max_tr, all_rounds(loosest - kDir), tight);
+              // Each ping journey has its latest departure (pong_search
+              // throws). A miss only costs this step its anchor: log, count.
+              for (auto const& j : group) {
+                if (utl::none_of(tight, [&](journey const& t) {
+                      return t.transfers_ == j.transfers_ &&
+                             t.start_time_ == arr;
+                    })) {
+                  ++n_pong_missing;
+                  log(log_lvl::error, "bmrap_profile",
+                      "no pong for transfers={}, start_time={} found",
+                      j.transfers_, arr);
+                }
+              }
+            });
         sw.lap(ms_pong);
 
         anchors.clear();
         max_trips = 0U;
         for (auto const& j : tight) {
-          auto const trips = static_cast<std::uint8_t>(j.transfers_ + 1U);
-          anchors.push_back({j.dest_time_, j.start_time_, trips});
-          max_trips = std::max(max_trips, trips);
+          anchors.push_back({j.dest_time_, j.start_time_, trips(j)});
+          max_trips = std::max(max_trips, trips(j));
         }
         if (anchors.empty()) {
           exit_reason = 2U;
           break;
         }
         // A later step can re-anchor a journey to a departure an earlier step
-        // covered with a better arrival: keep all_anchors a (departure,
-        // arrival, trips) Pareto set, a dominated anchor must not be an A(J).
-        auto const dominates = [&](anchor const& x, anchor const& y) {
-          return !is_better(x.anchored_, y.anchored_) &&
-                 !is_better(y.found_, x.found_) && x.trips_ <= y.trips_;
-        };
+        // covered with a better arrival.
         for (auto const& a : anchors) {
-          if (utl::any_of(all_anchors,
-                          [&](anchor const& o) { return dominates(o, a); })) {
-            continue;
-          }
-          utl::erase_if(all_anchors,
-                        [&](anchor const& o) { return dominates(a, o); });
-          all_anchors.emplace_back(a);
+          add_anchor<SearchDir>(all_anchors, a);
         }
       }
 
@@ -545,7 +752,6 @@ routing_result bmrap_profile(
           tt, rtt, q, anchors, base_day, /*horizon=*/start_time - kDir, budget,
           r_state, prune_stats, &fwd_bounds, /*host_copy=*/!GpuMc);
       sw.lap(ms_bounds);
-      ++n_bound_builds;
       mc_ping.set_bounds(&bounds);
     }
     ++n_steps;
@@ -572,9 +778,6 @@ routing_result bmrap_profile(
     // finds it. An arrival group is skipped when all its journeys already are
     // re-anchored in the results (the mc ping finds most of the previous
     // step's again). Results have the scan's convention, mc journeys not.
-    utl::sort(mc_results, [&](journey const& a, journey const& b) {
-      return is_better(a.dest_time_, b.dest_time_);
-    });
     auto const re_anchored = [&](journey const& x) {
       return utl::any_of(s_state.results_, [&](journey const& y) {
         return y.start_time_ == x.dest_time_ &&
@@ -584,62 +787,58 @@ routing_result bmrap_profile(
 
     auto step_results = pareto_set<journey>{};
     auto skipped_deps = std::vector<unixtime_t>{};
-    for_each_arrival_group(mc_results, [&](unixtime_t const arr,
-                                           auto const first, auto const last) {
-      auto const group_tr =
-          std::max_element(first, last, [](journey const& a, journey const& b) {
-            return a.transfers_ < b.transfers_;
-          })->transfers_;
-      if (std::all_of(first, last, re_anchored)) {
-        // its departures still set the advance (step 6)
-        ++n_mc_pong_skipped;
-        for (auto const& r : s_state.results_) {
-          if (r.start_time_ == arr && r.transfers_ <= group_tr) {
-            skipped_deps.push_back(r.dest_time_);
+    for_each_arrival_group<SearchDir>(
+        mc_results,
+        [&](unixtime_t const arr, std::span<journey const> const group,
+            std::uint8_t const group_tr) {
+          if (utl::all_of(group, re_anchored)) {
+            // its departures still set the advance (step 6)
+            ++n_mc_pong_skipped;
+            for (auto const& r : s_state.results_) {
+              if (r.start_time_ == arr && r.transfers_ <= group_tr) {
+                skipped_deps.push_back(r.dest_time_);
+              }
+            }
+            return;
           }
-        }
-        return;
-      }
-      // guided by the mc ping: a re-anchored journey's prefixes depart no
-      // earlier than the step, so the ping has a label at each of its stops
-      auto targets = std::vector<journey const*>{};
-      for (auto it = first; it != last; ++it) {
-        targets.push_back(&*it);
-      }
-      // one search per group: the bags outlive next_start_time()
-      mc_pong.reset_arrivals();
-      seed_bwd(mc_pong, arr);
-      guided(mc_pong, targets, [&]() {
-        mc_pong.execute(arr, group_tr, all_rounds(start_time - kDir),
-                        step_results);
-      });
-      // before the realization reuses the state
-      for (auto& j : step_results) {
-        if (!j.is_reconstructed_ && !j.error_) {
-          try {
-            mc_pong.reconstruct(qf, j);
-          } catch (std::exception const& e) {
-            j.error_ = true;
-            log(log_lvl::error, "bmrap_profile", "reconstruct failed: {}",
-                e.what());
+          // guided by the mc ping: a re-anchored journey's prefixes depart no
+          // earlier than the step, so the ping has a label at each of its stops
+          auto targets = std::vector<journey const*>{};
+          for (auto const& j : group) {
+            targets.push_back(&j);
           }
-        }
-      }
+          // one search per group: the bags outlive next_start_time()
+          mc_pong.reset_arrivals();
+          seed_bwd(mc_pong, arr);
+          mc_pong.set_guide(targets);
+          mc_pong.execute(arr, group_tr, all_rounds(start_time - kDir),
+                          step_results);
+          // before the realization reuses the state
+          for (auto& j : step_results) {
+            if (!j.is_reconstructed_ && !j.error_) {
+              try {
+                mc_pong.reconstruct(qf, j);
+              } catch (std::exception const& e) {
+                j.error_ = true;
+                log(log_lvl::error, "bmrap_profile", "reconstruct failed: {}",
+                    e.what());
+              }
+            }
+          }
 
-      if constexpr (kFwd) {
-        mc_pong.take_guide();
-        sw.lap(ms_mc_pong);
-        realize(arr, step_results);
-        sw.lap(ms_realize);
-      }
-    });
+          if constexpr (kFwd) {
+            mc_pong.take_guide();
+            sw.lap(ms_mc_pong);
+            realize(arr, step_results);
+            sw.lap(ms_realize);
+          }
+        });
     sw.lap(ms_mc_pong);
     for (auto const& j : step_results) {
       if (!j.error_) {
         s_state.results_.add(journey{j});
       }
     }
-    sw.lap(ms_recon);
 
     // ---- 6. ADVANCE ----
     // past the loosest departure at or after the step over anchors, mc journeys
@@ -668,7 +867,6 @@ routing_result bmrap_profile(
     }
     start_time = next;
   }
-
   // opposed, the range search fixed the window
   auto const scanned =
       aligned ? (kFwd ? interval<unixtime_t>{scan_interval.from_, start_time}
@@ -755,7 +953,6 @@ routing_result bmrap_profile(
   algo_stats["bmrapp_realized"] = n_realized;
   algo_stats["bmrapp_unrealized"] = n_unrealized;
   algo_stats["bmrapp_exit"] = exit_reason;
-  algo_stats["bmrapp_bound_builds"] = n_bound_builds;
   algo_stats["bmrapp_anchors"] = all_anchors.size();
   algo_stats["bmrapp_restricted_away"] = n_restricted;
   algo_stats["bmrapp_ms_ping"] = ms(ms_ping);
@@ -763,10 +960,8 @@ routing_result bmrap_profile(
   algo_stats["bmrapp_ms_bounds"] = ms(ms_bounds);
   algo_stats["bmrapp_ms_mc_ping"] = ms(ms_mc);
   algo_stats["bmrapp_ms_mc_pong"] = ms(ms_mc_pong);
-  algo_stats["bmrapp_ms_reconstruct"] = ms(ms_recon);
   algo_stats["bmrapp_ms_fwd_bounds"] = ms(ms_fwd_bounds);
-  algo_stats["bmrapp_fwd_bound_builds"] = n_fwd_bound_builds;
-  algo_stats["bmrapp_ms_lb"] = ms(lb_time);
+  algo_stats["bmrapp_ms_lb"] = ms(ms_lb);
   algo_stats["bmrapp_ms_setup"] = ms(ms_setup);
   algo_stats["bmrapp_aligned"] = aligned ? 1U : 0U;
   algo_stats["bmrapp_ms_range"] = ms(ms_range);
@@ -777,7 +972,7 @@ routing_result bmrap_profile(
       .journeys_ = &s_state.results_,
       .interval_ = scanned,
       .search_stats_ =
-          {.lb_time_ = ms(lb_time),
+          {.lb_time_ = ms(ms_lb),
            .execute_time_ =
                std::chrono::duration_cast<std::chrono::milliseconds>(
                    clk::now() - t0)},
@@ -796,7 +991,7 @@ routing_result bmrap_profile_search(
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout,
-    bool const gpu_mc) {
+    [[maybe_unused]] bool const gpu_mc) {
   // A fixed start time has no profile to restrict (and no window to scan):
   // the mcraptor Pareto set of that departure.
   if (std::holds_alternative<unixtime_t>(q.start_time_)) {
@@ -804,28 +999,29 @@ routing_result bmrap_profile_search(
                          timeout);
   }
   // Rt as in raptor_search: the CPU raptor sizes its state by it
-  auto const run = [&]<bool GpuMc>() {
-    auto const with_dir = [&]<direction Dir>() {
-      return rtt == nullptr
-                 ? bmrap_profile<Dir, false, Criteria, AlgoState, GpuMc>(
-                       tt, rtt, s_state, algo_state, mc_state, std::move(q),
-                       timeout)
-                 : bmrap_profile<Dir, true, Criteria, AlgoState, GpuMc>(
-                       tt, rtt, s_state, algo_state, mc_state, std::move(q),
-                       timeout);
+  auto const run = [&]<bool GpuMc>(auto& mc) {
+    auto const go = [&]<direction Dir, bool Rt>() {
+      return bmrap_profile<Dir, Rt, Criteria, AlgoState, GpuMc>(
+          tt, rtt, s_state, algo_state, mc, std::move(q), timeout);
     };
-    return search_dir == direction::kForward
-               ? with_dir.template operator()<direction::kForward>()
-               : with_dir.template operator()<direction::kBackward>();
+    auto const fwd = search_dir == direction::kForward;
+    return rtt == nullptr
+               ? (fwd ? go.template operator()<direction::kForward, false>()
+                      : go.template operator()<direction::kBackward, false>())
+               : (fwd ? go.template operator()<direction::kForward, true>()
+                      : go.template operator()<direction::kBackward, true>());
   };
-  // the device mc state is a large allocation that can fail: fall back to the
-  // CPU mc phases then
-  if constexpr (kGpuMcSupported<Criteria, AlgoState>) {
-    if (gpu_mc && algo_state.try_mc_state() != nullptr) {
-      return run.template operator()<true>();
+#if defined(NIGIRI_CUDA)
+  // the device mc state is a large allocation that can fail: the CPU mc phases
+  // then
+  if constexpr (std::is_same_v<AlgoState, gpu::gpu_raptor_state>) {
+    if (auto* const mc = gpu_mc ? algo_state.try_mc_state() : nullptr;
+        mc != nullptr) {
+      return run.template operator()<true>(*mc);
     }
   }
-  return run.template operator()<false>();
+#endif
+  return run.template operator()<false>(mc_state);
 }
 
 #define NIGIRI_BMRAPP_INSTANTIATE(C, S)                         \

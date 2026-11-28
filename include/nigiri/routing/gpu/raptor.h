@@ -66,10 +66,9 @@ struct gpu_raptor_state {
   ~gpu_raptor_state();
 
   // The device state of BM-RAPTOR's mc phases, built on first use and kept
-  // (too expensive per query); borrows this state's scratch and stream. The
-  // allocation can fail: try_mc_state() first (a failure is remembered).
+  // (too expensive per query); borrows this state's scratch and stream.
+  // nullptr if the allocation failed (a failure is remembered).
   gpu_mcraptor_state* try_mc_state();
-  gpu_mcraptor_state& mc_state();
 
   struct impl;
   std::unique_ptr<impl> impl_;
@@ -134,12 +133,11 @@ struct gpu_raptor {
     start_round_ = static_cast<std::uint8_t>(k);
   }
   // relaxed target pruning, so the round times form a valid tau_arr^->(v, i)
-  // matrix; floor/cap are relax_arr()'s clamps
-  void set_dest_relax(unixtime_t origin,
-                      double factor,
-                      int add_minutes,
-                      double floor_min = 0.0,
-                      double cap_min = 0.0);
+  // matrix (as raptor::set_dest_relax())
+  void set_dest_relax(unixtime_t const origin) {
+    relax_origin_ = origin;
+    relax_on_ = true;
+  }
   // reach_matrix() on the device, into the state's slot for its kind
   void build_reach_bounds(bmrap_bounds& out,
                           std::uint8_t budget,
@@ -180,10 +178,6 @@ private:
   bmrap_bounds const* bm_bounds_{nullptr};
   std::uint8_t start_round_{0U};
   unixtime_t relax_origin_{};
-  double relax_factor_{1.0};
-  double relax_floor_{0.0};
-  double relax_cap_{0.0};
-  int relax_add_{0};
   bool relax_on_{false};
 };
 
