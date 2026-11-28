@@ -47,10 +47,10 @@ CISTA_CUDA_COMPAT constexpr int night_day(delta_t const t,
   return (m >= 0 ? m : m - 1439) / 1440;
 }
 
-// The wait for the first trip does not count (after_wait()), so a later trip
-// past a night can be the better first one: night_transfer_dim seeds each
-// start again at the end of every night within the search's bound (backward:
-// just before each starts). The day rule keeps them all.
+// The end of the next night after t (backward: the minute before the next
+// night's start): the wait for the first trip counts, so a profile search also
+// starts there (bmrap_profile.cc) to find the journeys past the night without
+// night_transfer_dim's bit.
 CISTA_CUDA_COMPAT constexpr int after_night(int const t,
                                             int const offset,
                                             bool const fwd) {

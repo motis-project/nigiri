@@ -220,8 +220,9 @@ struct mode_switches_dim : mc_dim {
 // but a sleeper's ride (is_sleeper_clasz) only by its ends: one through the
 // night is sleep. A ride shorter than the night judges the same either way,
 // and a longer one has its own route (loader/get_index.h), so the rule keeps
-// the trips of a route in order. Walks count by the wait that follows; the
-// start's wait does not count, the walk to the destination not at all.
+// the trips of a route in order. Walks count by the wait that follows, the
+// walk to the destination not at all. The start's wait counts like any other:
+// a profile search starts at every departure and after every night.
 // Without the night, a label is stuck in its day (night_day()): it is better
 // than a later one only on the same day, on a stop as on a trip (by the day
 // it boarded).

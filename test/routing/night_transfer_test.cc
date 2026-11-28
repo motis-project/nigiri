@@ -32,7 +32,7 @@ namespace {
 //   B -> D    21:45 -> 00:30 (LATE: alights in the night), 07:00 -> 08:00
 //             (MORND, LATE's route: the earlier trip, but boarded a day
 //             before)
-// The first trip's wait does not count, so a later one can be better:
+// The first trip's wait counts too, so a later start can be better:
 //   S1 -> T1  03:00 -> 03:30 (NIGHTBUS), 07:00 -> 07:30 (MORNBUS)
 //   S2 -> T2  22:00 -> 22:30 (EVEBUS), 23:30 -> 00:30 (LATEBUS)
 constexpr auto const kNightGTFS = R"(
@@ -219,6 +219,9 @@ TEST(night_transfer, night_free_on_another_day) {
             search("D"));
 }
 
+// The wait for the first trip counts like any other: from a fixed 23:00 the
+// 07:00 bus waits through the night. A profile search starts at every
+// departure, BMRAPP also after every night: both find it without.
 TEST(night_transfer, first_trip_after_the_night) {
   // the rides only (a start time's journeys all start then)
   auto const rides = [](pareto_set<journey> const& js) {
@@ -231,8 +234,8 @@ TEST(night_transfer, first_trip_after_the_night) {
     std::sort(begin(v), end(v));
     return v;
   };
-  auto const search = [&](char const* from, char const* to, direction const dir,
-                          unixtime_t const t) {
+  auto const make_query = [](char const* from, char const* to,
+                             direction const dir, start_time_t const t) {
     auto q = query{};
     q.start_ = {{stop_of(from), 0min, 0U}};
     q.destination_ = {{stop_of(to), 0min, 0U}};
@@ -240,17 +243,47 @@ TEST(night_transfer, first_trip_after_the_night) {
       q.flip_dir();
     }
     q.start_time_ = t;
+    return q;
+  };
+  auto const search = [&](char const* from, char const* to, direction const dir,
+                          start_time_t const t) {
     auto ss = search_state{};
     auto ms = mcraptor_night_transfer_state{};
-    return rides(*raptor_search(night_tt(), nullptr, ss, ms, std::move(q), dir)
+    return rides(*raptor_search(night_tt(), nullptr, ss, ms,
+                                make_query(from, to, dir, t), dir)
                       .journeys_);
   };
-  // from 23:00, not only the earliest bus (in the night)
-  EXPECT_EQ((std::vector<std::string>{"27:00 27:30 n1", "31:00 31:30 n0"}),
+  // one minute, extended towards the search direction until both are found
+  auto const bmrapp = [&](char const* from, char const* to, direction const dir,
+                          unixtime_t const t) {
+    auto q = make_query(from, to, dir,
+                        dir == direction::kForward ? interval{t, t + 1min}
+                                                   : interval{t - 1min, t});
+    q.extend_interval_later_ = dir == direction::kForward;
+    q.extend_interval_earlier_ = dir == direction::kBackward;
+    q.min_connection_count_ = 2U;
+    auto ss = search_state{};
+    auto as = raptor_state{};
+    auto ms = basic_mcraptor_state<arr_night_transfer_criteria>{};
+    return rides(*bmrap_profile_search<arr_night_transfer_criteria>(
+                      night_tt(), nullptr, ss, as, ms, std::move(q), dir)
+                      .journeys_);
+  };
+
+  auto const fwd = std::vector<std::string>{"27:00 27:30 n1", "31:00 31:30 n0"};
+  EXPECT_EQ(std::vector<std::string>{"27:00 27:30 n1"},
             search("S1", "T1", direction::kForward, at(23)));
-  // by 10:00, not only the latest bus (in the night)
-  EXPECT_EQ((std::vector<std::string>{"22:00 22:30 n0", "23:30 24:30 n1"}),
+  EXPECT_EQ(fwd, search("S1", "T1", direction::kForward,
+                        interval{at(23), at(24 + 7) + 1min}));
+  EXPECT_EQ(fwd, bmrapp("S1", "T1", direction::kForward, at(23)));
+
+  // arriving by 10:00, the 22:30 arrival waits through the night
+  auto const bwd = std::vector<std::string>{"22:00 22:30 n0", "23:30 24:30 n1"};
+  EXPECT_EQ(std::vector<std::string>{"23:30 24:30 n1"},
             search("S2", "T2", direction::kBackward, at(24 + 10)));
+  EXPECT_EQ(bwd, search("S2", "T2", direction::kBackward,
+                        interval{at(22) + 30min, at(24 + 10)}));
+  EXPECT_EQ(bwd, bmrapp("S2", "T2", direction::kBackward, at(24 + 10)));
 }
 
 TEST(night_transfer, night_day_by_direction) {
@@ -313,4 +346,86 @@ TEST(night_transfer, is_night) {
 TEST(night_transfer, night_offset_averages_start_and_destination) {
   // both in Europe/Berlin, summer time
   EXPECT_EQ(120, night_offset(night_tt(), make(direction::kForward)));
+}
+
+namespace {
+
+// Only a step at the end of the night finds J without the bit. From a step in
+// the night J waits through it at O, and Z, later and faster but in the night,
+// beats it there; nor is J an anchor (Z beats it on departure, arrival and
+// transfers), so no anchor departure brings the scan back to 07:00.
+//   J  O -> X 07:00 -> 07:30 (JBUS), X -> Z 22:00 -> 06:50 (SLEEPER, sleeps)
+//   Z  O -> Y 08:00 -> 08:30 (ZBUS), Y -> Z 03:00 -> 04:00 (ZNIGHT)
+constexpr auto const kNightEndGTFS = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+D,20240619,1
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+O,O,,50.0,8.0,,,
+X,X,,50.5,8.0,,,
+Y,Y,,50.5,9.0,,,
+Z,Z,,51.0,8.0,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+JBUS,MTA,JBUS,,,3
+SLEEPER,MTA,SLEEPER,,,2
+ZBUS,MTA,ZBUS,,,3
+ZNIGHT,MTA,ZNIGHT,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+JBUS,D,JBUS,,
+SLEEPER,D,SLEEPER,,
+ZBUS,D,ZBUS,,
+ZNIGHT,D,ZNIGHT,,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+JBUS,07:00:00,07:00:00,O,0,0,0
+JBUS,07:30:00,07:30:00,X,1,0,0
+SLEEPER,22:00:00,22:00:00,X,0,0,0
+SLEEPER,30:50:00,30:50:00,Z,1,0,0
+ZBUS,08:00:00,08:00:00,O,0,0,0
+ZBUS,08:30:00,08:30:00,Y,1,0,0
+ZNIGHT,27:00:00,27:00:00,Y,0,0,0
+ZNIGHT,28:00:00,28:00:00,Z,1,0,0
+)";
+
+}  // namespace
+
+TEST(night_transfer, bmrapp_steps_at_the_end_of_the_night) {
+  auto const tt = loader::load(loader::mem_dir::read(kNightEndGTFS),
+                               {2024_y / June / 18, 2024_y / June / 21});
+  auto const stop = [&](char const* id) {
+    return tt.find({id, source_idx_t{0U}}).value();
+  };
+  auto q = query{};
+  q.start_ = {{stop("O"), 0min, 0U}};
+  q.destination_ = {{stop("Z"), 0min, 0U}};
+  q.start_time_ = interval{at(3), at(3) + 1min};
+  q.extend_interval_later_ = true;
+  q.min_connection_count_ = 2U;
+  auto const both =
+      std::vector<std::string>{"07:00 30:50 n0", "08:00 28:00 n1"};
+
+  auto ss = search_state{};
+  auto ms = mcraptor_night_transfer_state{};
+  auto range = q;
+  range.start_time_ = interval{at(3), at(8) + 1min};
+  EXPECT_EQ(both, rows(*raptor_search(tt, nullptr, ss, ms, std::move(range),
+                                      direction::kForward)
+                            .journeys_));
+
+  auto as = raptor_state{};
+  auto bms = basic_mcraptor_state<arr_night_transfer_criteria>{};
+  EXPECT_EQ(both, rows(*bmrap_profile_search<arr_night_transfer_criteria>(
+                            tt, nullptr, ss, as, bms, q, direction::kForward)
+                            .journeys_));
 }

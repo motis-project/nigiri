@@ -482,6 +482,7 @@ routing_result bmrap_profile(
   auto ms_realize = clk::duration{};
   auto fwd_bounds = bmrap_bounds{};
   auto bounds = bmrap_bounds{};
+  [[maybe_unused]] auto const night = night_offset(tt, q);
   auto const budget_cap = static_cast<std::uint8_t>(
       std::min<unsigned>(q.max_transfers_ + 1U, kMaxTransfers + 1U));
 
@@ -861,6 +862,17 @@ routing_result bmrap_profile(
     }
     for (auto const d : skipped_deps) {
       consider(d);
+    }
+    // night_transfer_dim counts the wait for the first trip: also step at the
+    // end of the next night (backward: just before it starts), from where the
+    // journeys past it can be found without
+    if constexpr (Criteria::extras_t::kByDay) {
+      auto const base = unixtime_t{tt.internal_interval_days().from_ +
+                                   to_idx(base_day) * date::days{1}};
+      consider(
+          base +
+          i32_minutes{after_night((start_time - base).count(), night, kFwd)} -
+          kDir);
     }
     auto const next = loosest_dep.value_or(start_time) + kDir;
     if (!is_better(start_time, next)) {

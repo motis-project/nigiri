@@ -175,14 +175,13 @@ struct mcraptor_impl {
     return extras_t::after_ride_times(extras_t::after_ride(carried, cl, ctx_),
                                       cl, board, alight, ctx_);
   }
-  // what boarding at dep carries, waiting there from arr (not at the start)
+  // what boarding at dep carries, waiting there from arr
   __device__ __forceinline__ std::uint32_t crit_boarding(
-      unsigned const k,
       std::uint32_t const carried,
       delta_t const arr,
       delta_t const dep) const {
     if constexpr (extras_t::kRideTimes) {
-      return k == 1U ? carried : extras_t::after_wait(carried, arr, dep, ctx_);
+      return extras_t::after_wait(carried, arr, dep, ctx_);
     } else {
       return carried;
     }
@@ -873,7 +872,7 @@ struct mcraptor_impl {
       if (et.is_valid() && !bag.add(pack_et(r, et), lab.breadcrumb_,
                                     route_bag<K>::pack_board_extras(
                                         stop_idx,
-                                        crit_boarding(k, ex, from_key(key),
+                                        crit_boarding(ex, from_key(key),
                                                       from_key(et_dep_key)),
                                         crit_day(from_key(et_dep_key))))) {
         return false;
@@ -1248,7 +1247,7 @@ struct mcraptor_impl {
       if (!bag.add(0U, lab.breadcrumb_,
                    route_bag<K>::pack_board_extras(
                        stop_idx,
-                       crit_boarding(k, ex, from_key(key), from_key(dep_key)),
+                       crit_boarding(ex, from_key(key), from_key(dep_key)),
                        crit_day(from_key(dep_key))))) {
         return false;
       }

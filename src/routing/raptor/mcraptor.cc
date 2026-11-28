@@ -206,14 +206,6 @@ void basic_mcraptor<SearchDir, Criteria>::execute(
                              static_cast<std::uint16_t>(dir(arr - d_start)));
     bag_insert(l, Criteria::at_start(arr, walk), state_t::kNoBreadcrumb,
                /*round=*/0U, /*by_route=*/false);
-    if constexpr (Criteria::extras_t::kByDay) {
-      for (auto t = after_night(arr, ctx_.night_offset_, kFwd);
-           is_better(clamp(t), worst_at_dest_);
-           t = after_night(t, ctx_.night_offset_, kFwd)) {
-        bag_insert(l, Criteria::at_start(clamp(t), walk),
-                   state_t::kNoBreadcrumb, /*round=*/0U, /*by_route=*/false);
-      }
-    }
   }
   seeds_.clear();
 
@@ -463,9 +455,8 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
                                ? time_at_stop(r, et, stop_idx, kDepEv)
                                : delta_t{0};
           board(trip_order_key(r, et), et, stop_idx, parent,
-                k == 1U || !Criteria::extras_t::kRideTimes
-                    ? crit.extras_
-                    : crit.boarding_at(dep, ctx_),
+                Criteria::extras_t::kRideTimes ? crit.boarding_at(dep, ctx_)
+                                               : crit.extras_,
                 Criteria::template day<SearchDir>(dep, ctx_));
         }
       });
@@ -521,9 +512,8 @@ bool basic_mcraptor<SearchDir, Criteria>::update_rt_transport(
         auto const dep = rt_time_at_stop(rt_t, stop_idx, kDepEv);
         if (is_better_or_eq(crit.arr_, dep)) {
           board(0U, transport{}, stop_idx, parent,
-                k == 1U || !Criteria::extras_t::kRideTimes
-                    ? crit.extras_
-                    : crit.boarding_at(dep, ctx_),
+                Criteria::extras_t::kRideTimes ? crit.boarding_at(dep, ctx_)
+                                               : crit.extras_,
                 Criteria::template day<SearchDir>(dep, ctx_));
         }
       });

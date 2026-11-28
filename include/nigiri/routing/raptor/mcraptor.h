@@ -125,7 +125,7 @@ struct arr_with {
     return {arr, static_cast<carried>(extras_t::after_ride_times(
                      extras_t::after_ride(prev, c, ctx), c, board, arr, ctx))};
   }
-  // what boarding at dep carries, waiting there from arr_ (not at the start)
+  // what boarding at dep carries, waiting there from arr_
   carried boarding_at(delta_t const dep, mc_context const& ctx) const {
     return static_cast<carried>(extras_t::after_wait(extras_, arr_, dep, ctx));
   }

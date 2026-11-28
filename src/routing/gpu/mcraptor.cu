@@ -637,33 +637,24 @@ void gpu_mcraptor<SearchDir, Criteria>::execute(
 
   auto const d_start_dep = unix_to_delta(base(), start_time);
 
-  // night_transfer_dim: each start again after every night (after_night())
-  auto seeds = std::vector<mc_seed>{};
-  for (auto const& [l, t] : starts_) {
-    auto const arr = unix_to_delta(base(), t);
+  auto* const starts_pin = s.starts_pin_.ensure(starts_.size());
+  for (auto i = std::size_t{0U}; i != starts_.size(); ++i) {
+    auto const arr = unix_to_delta(base(), starts_[i].second);
     auto const elapsed = kFwd ? arr - d_start_dep : d_start_dep - arr;
-    auto const walk = seed_walk<SearchDir>(tt_, rtt_, start_, l, start_time,
-                                           static_cast<std::uint16_t>(elapsed));
-    seeds.push_back({l, arr, walk});
-    if constexpr (Criteria::extras_t::kByDay) {
-      for (auto x = after_night(arr, ctx_.night_offset_, kFwd);
-           kFwd ? clamp(x) < worst_at_dest_ : clamp(x) > worst_at_dest_;
-           x = after_night(x, ctx_.night_offset_, kFwd)) {
-        seeds.push_back({l, clamp(x), walk});
-      }
-    }
+    starts_pin[i] = {
+        starts_[i].first, arr,
+        seed_walk<SearchDir>(tt_, rtt_, start_, starts_[i].first, start_time,
+                             static_cast<std::uint16_t>(elapsed))};
   }
-  auto const n_seeds = seeds.size();
-  auto* const starts_pin = s.starts_pin_.ensure(n_seeds);
-  std::copy(begin(seeds), end(seeds), starts_pin);
-  auto* const starts_dev = s.starts_dev_.ensure(n_seeds, s.stream_);
-  CUDA_CHECK(cudaMemcpyAsync(starts_dev, starts_pin, n_seeds * sizeof(mc_seed),
+  auto* const starts_dev = s.starts_dev_.ensure(starts_.size(), s.stream_);
+  CUDA_CHECK(cudaMemcpyAsync(starts_dev, starts_pin,
+                             starts_.size() * sizeof(mc_seed),
                              cudaMemcpyHostToDevice, s.stream_));
 
   auto r = make_impl<SearchDir, Criteria>(
       s, kDirIdx, transfer_time_settings_, allowed_claszes_, ctx_, prf_idx_,
       base_, worst_at_dest_,
-      cuda::std::span<mc_seed const>{starts_dev, n_seeds});
+      cuda::std::span<mc_seed const>{starts_dev, starts_.size()});
 
   // rt: the rt traffic days make rt-updated static transports inactive (the rt
   // scan covers them); tt_.bitfields_ stays static (is_route_active reads it).
