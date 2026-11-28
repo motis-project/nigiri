@@ -121,7 +121,7 @@ bool basic_mcraptor<SearchDir, Criteria>::bag_insert(
   for (auto const& e : bag) {
     if (e.round_ <= round &&
         (separate ? e.by_route_ == by_route : !by_route || e.by_route_) &&
-        e.crit_.template dominates<SearchDir>(crit)) {
+        e.crit_.template dominates<SearchDir>(crit, ctx_)) {
       return false;
     }
   }
@@ -130,7 +130,7 @@ bool basic_mcraptor<SearchDir, Criteria>::bag_insert(
     if (bag[i].round_ >= round &&
         (separate ? bag[i].by_route_ == by_route
                   : by_route || !bag[i].by_route_) &&
-        crit.template dominates<SearchDir>(bag[i].crit_)) {
+        crit.template dominates<SearchDir>(bag[i].crit_, ctx_)) {
       ++removed;
       continue;
     }
@@ -257,6 +257,7 @@ bool basic_mcraptor<SearchDir, Criteria>::alight(unsigned const k,
                                                  std::uint32_t const l_idx,
                                                  stop_idx_t const stop_idx,
                                                  delta_t const by_transport,
+                                                 delta_t const board,
                                                  route_label const& rl,
                                                  clasz const ride_clasz,
                                                  std::uint32_t const transport,
@@ -269,7 +270,7 @@ bool basic_mcraptor<SearchDir, Criteria>::alight(unsigned const k,
     return false;
   }
   auto const ride_crit =
-      Criteria::from_ride(by_transport, ride_clasz, rl.carried_, ctx_);
+      Criteria::from_ride(by_transport, board, ride_clasz, rl.carried_, ctx_);
   if (!guide_feasible(l_idx, k, by_transport, ride_crit.extras_) ||
       dest_dominates(k,
                      ride_crit.projected_to(clamp(by_transport + dir(lb))))) {
@@ -379,31 +380,36 @@ bool basic_mcraptor<SearchDir, Criteria>::scan_stops(
   return any_marked;
 }
 
-// pareto over (trip order, carried criteria)
+// pareto over (trip order, carried criteria), by the boarding's day
 template <direction SearchDir, typename Criteria>
 void basic_mcraptor<SearchDir, Criteria>::board(
     std::uint32_t const key,
     transport const t,
     stop_idx_t const stop_idx,
     std::uint32_t const parent,
-    typename Criteria::carried const carried) {
+    typename Criteria::carried const carried,
+    int const day) {
+  using extras_t = typename Criteria::extras_t;
   for (auto& rl : route_bag_) {
     if (rl.key_ == key && rl.carried_ == carried) {
       // same trip and criteria: board closest to the exit
       rl.board_ = stop_idx;
       rl.parent_ = parent;
+      rl.day_ = day;
       return;
     }
     if (!is_earlier_trip(key, rl.key_) &&
-        Criteria::carried_dominates(rl.carried_, carried)) {
+        Criteria::carried_dominates(rl.carried_, carried) &&
+        extras_t::comparable(rl.carried_, rl.day_, carried, day)) {
       return;
     }
   }
   std::erase_if(route_bag_, [&](route_label const& rl) {
     return !is_earlier_trip(rl.key_, key) &&
-           Criteria::carried_dominates(carried, rl.carried_);
+           Criteria::carried_dominates(carried, rl.carried_) &&
+           extras_t::comparable(carried, day, rl.carried_, rl.day_);
   });
-  route_bag_.push_back({t, key, stop_idx, parent, carried});
+  route_bag_.push_back({t, key, stop_idx, parent, carried, day});
 }
 
 template <direction SearchDir, typename Criteria>
@@ -422,15 +428,22 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
       },
       [&](route_label const& rl, std::uint32_t const l_idx,
           stop_idx_t const stop_idx) {
-        return alight(k, l_idx, stop_idx,
-                      time_at_stop(r, rl.t_, stop_idx, kArrEv), rl,
-                      tt_.route_clasz_[r], to_idx(rl.t_.t_idx_), rl.t_.day_);
+        auto const arr = time_at_stop(r, rl.t_, stop_idx, kArrEv);
+        return alight(k, l_idx, stop_idx, arr,
+                      Criteria::extras_t::kRideTimes
+                          ? time_at_stop(r, rl.t_, rl.board_, kDepEv)
+                          : delta_t{0},
+                      rl, tt_.route_clasz_[r], to_idx(rl.t_.t_idx_),
+                      rl.t_.day_);
       },
       [&](Criteria const& crit, std::uint32_t const parent,
           stop_idx_t const stop_idx, location_idx_t const l) {
         // skip the lookup if a boarded trip already dominates
         for (auto const& rl : route_bag_) {
           if (Criteria::carried_dominates(rl.carried_, crit.extras_) &&
+              Criteria::extras_t::comparable(
+                  rl.carried_, rl.day_, crit.extras_,
+                  Criteria::template day<SearchDir>(crit.arr_, ctx_)) &&
               is_better(time_at_stop(r, rl.t_, stop_idx, kDepEv), crit.arr_)) {
             return;
           }
@@ -438,7 +451,13 @@ bool basic_mcraptor<SearchDir, Criteria>::update_route(unsigned const k,
         auto const [day, mam] = split(crit.arr_);
         auto const et = get_earliest_transport(r, stop_idx, day, mam, l);
         if (et.is_valid()) {
-          board(trip_order_key(r, et), et, stop_idx, parent, crit.extras_);
+          auto const dep = Criteria::extras_t::kRideTimes
+                               ? time_at_stop(r, et, stop_idx, kDepEv)
+                               : delta_t{0};
+          board(trip_order_key(r, et), et, stop_idx, parent,
+                Criteria::extras_t::kRideTimes ? crit.boarding_at(dep, ctx_)
+                                               : crit.extras_,
+                Criteria::template day<SearchDir>(dep, ctx_));
         }
       });
 }
@@ -480,16 +499,22 @@ bool basic_mcraptor<SearchDir, Criteria>::update_rt_transport(
       },
       [&](route_label const& rl, std::uint32_t const l_idx,
           stop_idx_t const stop_idx) {
-        return alight(k, l_idx, stop_idx,
-                      rt_time_at_stop(rt_t, stop_idx, kArrEv), rl,
-                      rtt_->rt_transport_section_clasz_[rt_t][0], to_idx(rt_t),
-                      day_idx_t::invalid());
+        auto const arr = rt_time_at_stop(rt_t, stop_idx, kArrEv);
+        return alight(k, l_idx, stop_idx, arr,
+                      Criteria::extras_t::kRideTimes
+                          ? rt_time_at_stop(rt_t, rl.board_, kDepEv)
+                          : delta_t{0},
+                      rl, rtt_->rt_transport_section_clasz_[rt_t][0],
+                      to_idx(rt_t), day_idx_t::invalid());
       },
       [&](Criteria const& crit, std::uint32_t const parent,
           stop_idx_t const stop_idx, location_idx_t) {
-        if (is_better_or_eq(crit.arr_,
-                            rt_time_at_stop(rt_t, stop_idx, kDepEv))) {
-          board(0U, transport{}, stop_idx, parent, crit.extras_);
+        auto const dep = rt_time_at_stop(rt_t, stop_idx, kDepEv);
+        if (is_better_or_eq(crit.arr_, dep)) {
+          board(0U, transport{}, stop_idx, parent,
+                Criteria::extras_t::kRideTimes ? crit.boarding_at(dep, ctx_)
+                                               : crit.extras_,
+                Criteria::template day<SearchDir>(dep, ctx_));
         }
       });
 }
@@ -896,6 +921,15 @@ NIGIRI_MC_INSTANTIATE(arr_non_transit_avoided_modes_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_switches_criteria)
 NIGIRI_MC_INSTANTIATE(arr_avoided_modes_mode_switches_criteria)
 NIGIRI_MC_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria)
+NIGIRI_MC_INSTANTIATE(arr_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_avoided_modes_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_mode_switches_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_avoided_modes_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_non_transit_mode_switches_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(arr_avoided_modes_mode_switches_night_transfer_criteria)
+NIGIRI_MC_INSTANTIATE(
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria)
 
 #undef NIGIRI_MC_INSTANTIATE
 

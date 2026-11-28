@@ -459,6 +459,23 @@ constexpr std::string_view to_str(clasz const c) {
   return clasz_str[static_cast<unsigned>(c)];
 }
 
+// Trains, ferries and coaches: a ride through the whole night counts as sleep
+// (routing::night_transfer_dim). One riding kSleeperMinRide or longer can, so
+// the loader gives it a route of its own (loader/get_index.h).
+constexpr bool is_sleeper_clasz(clasz const c) {
+  switch (c) {
+    case clasz::kHighSpeed:
+    case clasz::kLongDistance:
+    case clasz::kCoach:
+    case clasz::kNight:
+    case clasz::kRegional:
+    case clasz::kSuburban:
+    case clasz::kShip: return true;
+    default: return false;
+  }
+}
+inline constexpr auto kSleeperMinRide = 360;  // [min], the night's length
+
 enum class location_type : std::uint8_t {
   kGeneratedTrack,  // track generated from track number (i.e. HRD), no separate
                     // coordinate from parent. Has to be connected manually in

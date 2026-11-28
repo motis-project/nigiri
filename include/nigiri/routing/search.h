@@ -148,7 +148,8 @@ struct search {
         no_compulsory_reservation,
         q_.transfer_time_settings_,
         q_.prf_idx_,
-        mc_context{.avoided_ = q_.avoided_claszes_}};
+        mc_context{.avoided_ = q_.avoided_claszes_,
+                   .night_offset_ = night_offset(tt_, q_)}};
   }
 
   search(timetable const& tt,

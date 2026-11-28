@@ -35,7 +35,7 @@ void service_builder::add_service(ref_service&& s) {
   if (auto const it = route_services_.find(route_key_);
       it != end(route_services_)) {
     for (auto& r : it->second) {
-      auto const idx = get_index(r, s);
+      auto const idx = get_index(r, s, route_key_.second.front());
       if (idx.has_value()) {
         r.insert(begin(r) + *idx, s);
         return;

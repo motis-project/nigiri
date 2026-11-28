@@ -21,6 +21,7 @@
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
 #include "utl/verify.h"
+#include "utl/visit.h"
 #include "utl/zip.h"
 
 #include "nigiri/logging.h"
@@ -89,23 +90,36 @@ std::optional<geo::latlng> parse_coord(std::string const& str) {
   return latlng{std::stod(tokens[0]), std::stod(tokens[1])};
 }
 
+// n_queries whose start times keep `margin` to both ends of the timetable, so
+// interval extensions and long journeys stay inside it
 void generate_queries(
     std::vector<nigiri::query_generation::start_dest_query>& queries,
     std::uint32_t n_queries,
     nigiri::timetable const& tt,
     query_generation::generator_settings const& gs,
-    std::int64_t const seed) {
+    std::int64_t const seed,
+    duration_t const margin) {
   auto qg = seed > -1
                 ? query_generation::generator{tt, gs,
                                               static_cast<std::uint32_t>(seed)}
                 : query_generation::generator{tt, gs};
+  auto const tt_itv = tt.external_interval();
+  auto const inside = [&](routing::start_time_t const& start) {
+    auto const itv = utl::visit(
+        start, [](interval<unixtime_t> const i) { return i; },
+        [](unixtime_t const t) { return interval<unixtime_t>{t, t}; });
+    return itv.from_ >= tt_itv.from_ + margin && itv.to_ <= tt_itv.to_ - margin;
+  };
   queries.reserve(n_queries);
-  for (auto i = 0U; i != n_queries; ++i) {
+  for (auto i = 0U; queries.size() != n_queries && i != 100U * n_queries; ++i) {
     auto const sdq = qg.random_query();
-    if (sdq.has_value()) {
+    if (sdq.has_value() && inside(sdq->q_.start_time_)) {
       queries.emplace_back(sdq.value());
     }
   }
+  utl::verify(queries.size() == n_queries,
+              "only {} of {} queries keep {} minutes to the timetable's ends",
+              queries.size(), n_queries, margin.count());
 }
 
 // Range-RAPTOR start time == first trip's departure time
@@ -125,6 +139,9 @@ struct result_set {
 // bmrapp optimizes every criterion the device mcraptor supports as well
 using bmrapp_criteria_t =
     routing::arr_non_transit_avoided_modes_mode_switches_criteria;
+// bmrapp-night: the same and the night transfer criterion
+using bmrapp_night_criteria_t = routing::
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria;
 
 // algorithms optimizing more than (departure, arrival, transfers)
 bool is_multicriteria(std::string const& label) {
@@ -750,6 +767,7 @@ struct cpu_ws_t {
   search_state ss_;
   RS rs_;
   routing::basic_mcraptor_state<bmrapp_criteria_t> mc_;  // bmrapp's mc phases
+  routing::basic_mcraptor_state<bmrapp_night_criteria_t> mc_night_;
 };
 
 #if defined(NIGIRI_CUDA)
@@ -760,6 +778,7 @@ struct gpu_ws_t {
   search_state ss_;
   std::unique_ptr<RS> rs_;
   routing::basic_mcraptor_state<bmrapp_criteria_t> mc_;  // bmrapp's CPU mc
+  routing::basic_mcraptor_state<bmrapp_night_criteria_t> mc_night_;
 };
 #endif
 
@@ -821,6 +840,7 @@ int main(int argc, char* argv[]) {
 
   auto tt_path = std::filesystem::path{};
   auto n_queries = std::uint32_t{100U};
+  auto day_margin = duration_t::rep{};
   auto gs = query_generation::generator_settings{};
   auto interval_size = duration_t::rep{};
   auto bbox_str = std::string{};
@@ -894,7 +914,11 @@ int main(int argc, char* argv[]) {
       ("seed,s", bpo::value<std::int64_t>(&seed)->default_value(seed),
        "query generator RNG seed, -1 for a random seed")  //
       ("num_queries,n", bpo::value(&n_queries)->default_value(n_queries),
-       "number of queries to generate/process")(
+       "number of queries to generate/process")  //
+      ("day_margin",
+       bpo::value<duration_t::rep>(&day_margin)->default_value(0U),
+       "minutes the generated start intervals keep to both ends of the "
+       "timetable, e.g. 4320 (three days) for room to extend and arrive")(
           "interval_size,i",
           bpo::value<duration_t::rep>(&interval_size)->default_value(60U, "60"),
           "the initial size of the search interval in minutes, set to 0 for "
@@ -1087,10 +1111,10 @@ int main(int argc, char* argv[]) {
 #endif
   for (auto const& a : algos) {
     if (a != "range" && a != "pong" && a != "mcraptor" && a != "mcraptor-all" &&
-        a != "mcraptor-restricted" && a != "bmrapp") {
+        a != "mcraptor-restricted" && a != "bmrapp" && a != "bmrapp-night") {
       std::cerr << "invalid algo \"" << a
                 << "\", expected range | pong | mcraptor | mcraptor-all | "
-                   "mcraptor-restricted | bmrapp\n";
+                   "mcraptor-restricted | bmrapp | bmrapp-night\n";
       return 1;
     }
   }
@@ -1144,7 +1168,7 @@ int main(int argc, char* argv[]) {
 
     auto& fwd_qs = mode_queries[mode];
     if (fwd_qs.empty()) {
-      generate_queries(fwd_qs, n_queries, tt, rs, seed);
+      generate_queries(fwd_qs, n_queries, tt, rs, seed, duration_t{day_margin});
     }
 
     // (mode, dir) are the incomparable dimensions -- within one (mode, dir),
@@ -1172,7 +1196,8 @@ int main(int argc, char* argv[]) {
       for (auto const& algo : algos) {
         // pong and bmrapp run on the raptor state, the rest are range searches
         auto const use_pong = algo == "pong";
-        auto const use_bmrap = algo == "bmrapp";
+        auto const night = algo == "bmrapp-night";
+        auto const use_bmrap = algo == "bmrapp" || night;
         auto const use_restricted = algo == "mcraptor-restricted";
         auto const algo_part = use_pong || use_bmrap ? std::string{"range"}
                                : use_restricted ? std::string{"mcraptor-all"}
@@ -1185,6 +1210,12 @@ int main(int argc, char* argv[]) {
               qs, label + "-cpu", threads_v,
               [&](cpu_ws_t<RS>& w, routing::query q) {
                 if constexpr (std::is_same_v<RS, routing::raptor_state>) {
+                  if (night) {
+                    return routing::bmrap_profile_search<
+                        bmrapp_night_criteria_t>(tt, nullptr, w.ss_, w.rs_,
+                                                 w.mc_night_, std::move(q),
+                                                 dir);
+                  }
                   return use_bmrap
                              ? routing::bmrap_profile_search<bmrapp_criteria_t>(
                                    tt, nullptr, w.ss_, w.rs_, w.mc_,
@@ -1224,6 +1255,12 @@ int main(int argc, char* argv[]) {
               [&](gpu_ws_t<RS>& w, routing::query q) {
                 if constexpr (std::is_same_v<RS,
                                              routing::gpu::gpu_raptor_state>) {
+                  if (night) {
+                    return routing::bmrap_profile_search<
+                        bmrapp_night_criteria_t>(tt, nullptr, w.ss_, *w.rs_,
+                                                 w.mc_night_, std::move(q), dir,
+                                                 std::nullopt, gpu_mc);
+                  }
                   return use_bmrap
                              ? routing::bmrap_profile_search<bmrapp_criteria_t>(
                                    tt, nullptr, w.ss_, *w.rs_, w.mc_,
@@ -1273,7 +1310,7 @@ int main(int argc, char* argv[]) {
                       .template operator()<routing::gpu::gpu_raptor_state>(
                           "gpu.mc" + std::to_string(m != 0 ? 1 : 0), m != 0));
             }
-          } else if (run_gpu && !use_restricted) {  // a cpu reference
+          } else if (run_gpu && !use_restricted && !use_bmrap) {
             cells.push_back(
                 algo_part == "mcraptor"
                     ? run_gpu_cell.template
@@ -1286,6 +1323,22 @@ int main(int argc, char* argv[]) {
                       operator()<routing::gpu::gpu_raptor_state>());
           }
 #endif
+          if (night) {
+            for (auto const& c : cells) {
+              if (c.label_.starts_with(label + "-")) {
+                auto n = 0U, with = 0U;
+                for (auto const& js : c.res_) {
+                  for (auto const& j : js) {
+                    ++n;
+                    with += j.criteria_night_transfer_ ? 1U : 0U;
+                  }
+                }
+                summary.push_back(
+                    fmt::format("{:<36} journeys={} night={} without={}",
+                                c.label_, n, with, n - with));
+              }
+            }
+          }
         } catch (std::exception const& e) {
           // e.g. GPU state allocation OOM -- report + fail instead of dying
           std::cerr << "RUN " << label << " failed: " << e.what() << "\n";

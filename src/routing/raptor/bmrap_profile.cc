@@ -107,7 +107,8 @@ std::uint8_t trips(journey const& j) {
 bool same_criteria(journey const& a, journey const& b) {
   return a.transfers_ == b.transfers_ && a.criteria_cost_ == b.criteria_cost_ &&
          a.criteria_avoided_modes_ == b.criteria_avoided_modes_ &&
-         a.criteria_mode_switches_ == b.criteria_mode_switches_;
+         a.criteria_mode_switches_ == b.criteria_mode_switches_ &&
+         a.criteria_night_transfer_ == b.criteria_night_transfer_;
 }
 
 // The engines keep references to all of these.
@@ -141,7 +142,8 @@ Algo make_engine(
               q.no_compulsory_reservation_,
               q.transfer_time_settings_,
               q.prf_idx_,
-              mc_context{.avoided_ = q.avoided_claszes_}};
+              mc_context{.avoided_ = q.avoided_claszes_,
+                         .night_offset_ = night_offset(tt, q)}};
 }
 
 // the next start time of `algo`: q's starts at t (q flipped for the pongs)
@@ -480,6 +482,7 @@ routing_result bmrap_profile(
   auto ms_realize = clk::duration{};
   auto fwd_bounds = bmrap_bounds{};
   auto bounds = bmrap_bounds{};
+  [[maybe_unused]] auto const night = night_offset(tt, q);
   auto const budget_cap = static_cast<std::uint8_t>(
       std::min<unsigned>(q.max_transfers_ + 1U, kMaxTransfers + 1U));
 
@@ -860,6 +863,17 @@ routing_result bmrap_profile(
     for (auto const d : skipped_deps) {
       consider(d);
     }
+    // night_transfer_dim counts the wait for the first trip: also step at the
+    // end of the next night (backward: just before it starts), from where the
+    // journeys past it can be found without
+    if constexpr (Criteria::extras_t::kByDay) {
+      auto const base = unixtime_t{tt.internal_interval_days().from_ +
+                                   to_idx(base_day) * date::days{1}};
+      consider(
+          base +
+          i32_minutes{after_night((start_time - base).count(), night, kFwd)} -
+          kDir);
+    }
     auto const next = loosest_dep.value_or(start_time) + kDir;
     if (!is_better(start_time, next)) {
       throw utl::fail("no bmrapp progress: start_time={}, next={}", start_time,
@@ -1040,6 +1054,21 @@ NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_mode_switches_criteria,
                           raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria,
                           raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_night_transfer_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_night_transfer_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_night_transfer_criteria,
+                          raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_switches_night_transfer_criteria,
+                          raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_night_transfer_criteria,
+                          raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_switches_night_transfer_criteria,
+                          raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(
+    arr_avoided_modes_mode_switches_night_transfer_criteria, raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria,
+    raptor_state)
 
 #if defined(NIGIRI_CUDA)
 NIGIRI_BMRAPP_INSTANTIATE(arr_criteria, gpu::gpu_raptor_state)
@@ -1054,6 +1083,23 @@ NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_mode_switches_criteria,
                           gpu::gpu_raptor_state)
 NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_mode_switches_criteria,
                           gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_night_transfer_criteria, gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_avoided_modes_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_mode_switches_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_avoided_modes_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(arr_non_transit_mode_switches_night_transfer_criteria,
+                          gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(
+    arr_avoided_modes_mode_switches_night_transfer_criteria,
+    gpu::gpu_raptor_state)
+NIGIRI_BMRAPP_INSTANTIATE(
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria,
+    gpu::gpu_raptor_state)
 #endif
 
 #undef NIGIRI_BMRAPP_INSTANTIATE

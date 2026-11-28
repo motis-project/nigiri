@@ -911,6 +911,18 @@ NIGIRI_GPU_MCRAPTOR_INSTANTIATE(arr_non_transit_mode_switches_criteria)
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(arr_avoided_modes_mode_switches_criteria)
 NIGIRI_GPU_MCRAPTOR_INSTANTIATE(
     arr_non_transit_avoided_modes_mode_switches_criteria)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(arr_night_transfer_criteria)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(arr_non_transit_night_transfer_criteria)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(arr_avoided_modes_night_transfer_criteria)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(arr_mode_switches_night_transfer_criteria)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(
+    arr_non_transit_avoided_modes_night_transfer_criteria)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(
+    arr_non_transit_mode_switches_night_transfer_criteria)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(
+    arr_avoided_modes_mode_switches_night_transfer_criteria)
+NIGIRI_GPU_MCRAPTOR_INSTANTIATE(
+    arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria)
 #undef NIGIRI_GPU_MCRAPTOR_INSTANTIATE
 
 }  // namespace nigiri::routing::gpu

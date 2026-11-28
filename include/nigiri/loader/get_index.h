@@ -5,11 +5,27 @@
 #include <optional>
 #include <type_traits>
 
+#include "nigiri/types.h"
+
 namespace nigiri::loader {
+
+// A sleeper (types.h) rides alone: night_transfer_dim judges its rides by
+// their ends, which no longer orders it like the route's other trips.
+template <typename Service>
+bool is_sleeper(clasz const c, Service const& s) {
+  using duration = std::decay_t<decltype(s.utc_times_.front())>;
+  return is_sleeper_clasz(c) && s.utc_times_.back() - s.utc_times_.front() >=
+                                    duration{kSleeperMinRide};
+}
 
 template <typename ServiceVector, typename Service>
 std::optional<std::size_t> get_index(ServiceVector const& route_services,
-                                     Service const& s) {
+                                     Service const& s,
+                                     clasz const c) {
+  if (is_sleeper(c, s) ||
+      (!route_services.empty() && is_sleeper(c, route_services.front()))) {
+    return std::nullopt;
+  }
   auto const index = static_cast<unsigned>(std::distance(
       begin(route_services),
       std::lower_bound(begin(route_services), end(route_services), s,

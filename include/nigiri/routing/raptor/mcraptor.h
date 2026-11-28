@@ -7,6 +7,7 @@
 #include <optional>
 #include <span>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "cista/containers/bitvec.h"
@@ -93,21 +94,40 @@ struct arr_with {
   static bool carried_dominates(carried const a, carried const b) {
     return extras_t::dominates(a, b);
   }
+  // on a stop (the destination: completed_dominates())
   template <direction SearchDir>
-  bool dominates(arr_with const& o) const {
+  bool dominates(arr_with const& o, mc_context const& ctx) const {
     return arr_no_worse<SearchDir>(arr_, o.arr_) &&
-           extras_t::dominates(extras_, o.extras_);
+           extras_t::dominates(extras_, o.extras_) &&
+           extras_t::comparable(extras_, day<SearchDir>(arr_, ctx), o.extras_,
+                                day<SearchDir>(o.arr_, ctx));
+  }
+  // night_day() as far as the extras compare by it
+  template <direction SearchDir>
+  static int day(delta_t const t, mc_context const& ctx) {
+    if constexpr (extras_t::kByDay) {
+      return night_day(t, ctx.night_offset_, SearchDir == direction::kForward);
+    } else {
+      return 0;
+    }
   }
   template <direction SearchDir>
   bool completed_dominates(arr_with const& o) const {
     return arr_no_worse<SearchDir>(arr_, o.arr_) &&
            extras_t::completed_dominates(extras_, o.extras_);
   }
+  // board: the ride's time at its boarding stop, read iff kRideTimes
   static arr_with from_ride(delta_t const arr,
+                            delta_t const board,
                             clasz const c,
                             carried const prev,
                             mc_context const& ctx) {
-    return {arr, static_cast<carried>(extras_t::after_ride(prev, c, ctx))};
+    return {arr, static_cast<carried>(extras_t::after_ride_times(
+                     extras_t::after_ride(prev, c, ctx), c, board, arr, ctx))};
+  }
+  // what boarding at dep carries, waiting there from arr_
+  carried boarding_at(delta_t const dep, mc_context const& ctx) const {
+    return static_cast<carried>(extras_t::after_wait(extras_, arr_, dep, ctx));
   }
   static arr_with at_start(delta_t const arr, std::uint16_t const ingress) {
     return {arr, static_cast<carried>(extras_t::at_start(ingress))};
@@ -140,6 +160,24 @@ using arr_avoided_modes_mode_switches_criteria =
     arr_with<avoided_modes_dim, mode_switches_dim>;
 using arr_non_transit_avoided_modes_mode_switches_criteria =
     arr_with<non_transit_dim, avoided_modes_dim, mode_switches_dim>;
+using arr_night_transfer_criteria = arr_with<night_transfer_dim>;
+using arr_non_transit_night_transfer_criteria =
+    arr_with<non_transit_dim, night_transfer_dim>;
+using arr_avoided_modes_night_transfer_criteria =
+    arr_with<avoided_modes_dim, night_transfer_dim>;
+using arr_mode_switches_night_transfer_criteria =
+    arr_with<mode_switches_dim, night_transfer_dim>;
+using arr_non_transit_avoided_modes_night_transfer_criteria =
+    arr_with<non_transit_dim, avoided_modes_dim, night_transfer_dim>;
+using arr_non_transit_mode_switches_night_transfer_criteria =
+    arr_with<non_transit_dim, mode_switches_dim, night_transfer_dim>;
+using arr_avoided_modes_mode_switches_night_transfer_criteria =
+    arr_with<avoided_modes_dim, mode_switches_dim, night_transfer_dim>;
+using arr_non_transit_avoided_modes_mode_switches_night_transfer_criteria =
+    arr_with<non_transit_dim,
+             avoided_modes_dim,
+             mode_switches_dim,
+             night_transfer_dim>;
 
 template <typename Criteria>
 struct basic_mcraptor_state {
@@ -354,6 +392,7 @@ private:
     stop_idx_t board_;
     std::uint32_t parent_;
     typename Criteria::carried carried_;
+    int day_;  // Criteria::day() of the boarding
   };
 
   date::sys_days base() const;
@@ -374,7 +413,8 @@ private:
              transport,
              stop_idx_t,
              std::uint32_t parent,
-             typename Criteria::carried);
+             typename Criteria::carried,
+             int day);
   void update_footpaths(unsigned k);
   void collect_dest_journeys(unsigned k,
                              unixtime_t start_time,
@@ -394,6 +434,7 @@ private:
               std::uint32_t l_idx,
               stop_idx_t,
               delta_t by_transport,
+              delta_t board,
               route_label const&,
               clasz,
               std::uint32_t transport,
@@ -545,5 +586,7 @@ using mcraptor_avoided_modes_mode_switches_state =
     basic_mcraptor_state<arr_avoided_modes_mode_switches_criteria>;
 using mcraptor_non_transit_avoided_modes_mode_switches_state =
     basic_mcraptor_state<arr_non_transit_avoided_modes_mode_switches_criteria>;
+using mcraptor_night_transfer_state =
+    basic_mcraptor_state<arr_night_transfer_criteria>;
 
 }  // namespace nigiri::routing

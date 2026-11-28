@@ -9,6 +9,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"
+#include "nigiri/loader/hotel_trains.h"
 #include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/import_context.h"
 #include "nigiri/loader/init_finish.h"
@@ -75,6 +76,7 @@ timetable load(std::vector<timetable_source> const& sources,
   for (auto const& s : sources) {
     opt.src_tags_.push_back(s.tag_);
   }
+  add_hotel_night_trains(tt, ctx, opt.hotels_);
   finalize(tt, ctx, opt, shapes);
 
   return tt;
